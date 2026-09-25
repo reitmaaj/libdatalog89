@@ -1,0 +1,24 @@
+#!/bin/sh -eu
+# gen_compile_db <compiler> <outfile>
+#
+# Emit a compile_commands.json for the given compiler, listing every source
+# translation unit under src/ with the include path needed to parse it: this
+# project's own include/. green overrides the diagnostic/language profile, so
+# the command only needs correct includes and the file list.
+
+cc="$1"
+out="$2"
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+
+mkdir -p "$(dirname "$out")"
+
+printf '[\n' > "$out"
+sep=""
+for f in "$root"/src/*.c; do
+    [ -e "$f" ] || continue
+    printf '%s  {\n    "directory": "%s",\n    "command": "%s -c -I%s/include -I%s/src -o /dev/null %s",\n    "file": "%s"\n  }\n' \
+        "$sep" "$root" "$cc" "$root" "$root" "$f" "$f" >> "$out"
+    sep=","
+done
+printf ']\n' >> "$out"

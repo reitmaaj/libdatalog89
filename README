@@ -1,0 +1,75 @@
+# libdl89
+
+A small embeddable Datalog evaluation core in strict ISO C89.
+
+`libdl89` accepts facts and rules over caller-assigned opaque identifiers and
+computes the least fixed point over a caller-supplied relational store:
+
+    eval : Program x Database -> least_fixed_point(Program, Database)
+
+It knows nothing about syntax, symbols, SQL, persistence, transactions,
+modules, provenance, negation, aggregation, side effects, or application
+policy. The caller decides how programs and databases are represented,
+persisted, named, reflected, mutated, and presented.
+
+## Public API
+
+`include/dl89.h` declares the complete surface in the `dl89_` namespace:
+
+```c
+dl89_eval_create(&config, &eval);
+dl89_eval_add_fact(eval, relation, arity, tuple);
+dl89_eval_add_rule(eval, &rule);
+dl89_eval_run(eval);
+dl89_eval_destroy(eval);
+```
+
+The relational store is the only host interface:
+
+```c
+insert(ctx, relation, arity, tuple, &inserted);
+scan_open(ctx, relation, arity, values, bound, &scan);
+scan_next(ctx, scan, tuple, &found);
+scan_close(ctx, scan);
+```
+
+`insert` supplies set semantics and reports `inserted = 1` only for a tuple
+that did not previously exist; that flag is the fixed-point primitive.
+`scan_open` with `values = [a, ?, c]` and `bound = [1, 0, 1]` enumerates every
+tuple `r(a, X, c)`. Arity zero is supported consistently: nullary relations
+carry exactly one empty tuple.
+
+## Semantics and contracts
+
+- Finite monotone Datalog with fixed rule snapshots per run.
+- Least fixed point; no ordering among facts carries meaning.
+- Zero-body rules are facts; facts must be ground.
+- Head variables must be range-restricted by the body; repeated variables
+  impose equality constraints.
+- Relation arity is consistent across the whole evaluator instance, covering
+  both rules and `dl89_eval_add_fact`.
+- `dl89_eval_add_rule` deep-copies the caller's rule; caller buffers may be
+  reused or destroyed immediately.
+- `dl89_eval_run` returns `DL89_EBUSY` on reentrant mutation, `DL89_ESTORE`
+  on store failure, and `DL89_ENOMEM` on allocation failure. All scans opened
+  by the library are closed on every return path.
+
+## Build and test
+
+```sh
+just build        # strict C89, archive build/libdl89.a
+just headers      # public header compiles standalone (GCC + Clang)
+just smoke        # one end-to-end path first
+just unit         # per-concern unit programs
+just differential # generated programs vs. an independent reference evaluator
+just stress       # bounded non-trivial workloads
+just test         # smoke then unit, differential, stress
+just sanitize     # whole suite under ASan+UBSan+LSan
+just green        # sibling green toolchain matrix
+just check        # green gate
+just lint / format / doctor / clean
+```
+
+The green driver lives at `../../green/.agent/tmp/build/green` (override
+`GREEN`). `.agent/` holds concept, stories, design, scenarios, and acceptance
+documents; the project builds and runs without it.

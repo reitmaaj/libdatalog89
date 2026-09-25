@@ -1,0 +1,49 @@
+version: 1
+
+compile_commands:
+    gcc: build/gcc/compile_commands.json
+    clang: build/clang/compile_commands.json
+
+project_roots:
+    - src
+
+exclude:
+    - build/**
+
+compatibility_paths: []
+
+# Pure observational helpers usable in condition expressions. Kept in sync
+# with the GREEN_PURE markers in src/.
+pure_functions:
+    - ops_complete
+    - dl89_priv_store_valid
+    - dl89_priv_registry_find
+    - arity_next_cap
+    - dl89_status_name
+    - dl89_status_message
+    - atom_of
+    - atom_count_of
+    - body_arity
+    - rule_body_atom
+    - head_term
+    - term_at
+    - term_is_var
+    - term_kind_valid
+    - pair_conflict
+    - registry_conflict
+    - var_slot
+    - check_atom_terms
+    - check_rule_arities
+    - check_rule_registry
+    - var_in_body
+    - head_var_unsafe
+    - check_head_safety
+    - dl89_priv_rule_check
+    - add_arity
+    - sum_overflows
+    - max_arity_of
+    - rule_next_cap
+    - head_value
+    - delta_tuple_at
+    - relation_is_idb
+    - cap_double
