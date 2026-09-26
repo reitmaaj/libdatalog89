@@ -133,6 +133,7 @@ baseline:
 lint:
 	@for f in scripts/* test/*.sh; do \
 	    [ -e "$f" ] || continue; \
+	    case "$f" in *.conf) continue ;; esac; \
 	    shellcheck -s sh "$f" || exit 1; \
 	    shellcheck -s bash "$f" || exit 1; \
 	done
