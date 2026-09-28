@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-#include <dl89.h>
+#include <datalog89.h>
 
 #include "ref_store.h"
 
@@ -11,7 +11,7 @@ typedef struct fault_store fault_store;
 
 fault_store *fault_store_new(ref_store *inner);
 void fault_store_free(fault_store *fs);
-dl89_store fault_store_dl89(fault_store *fs);
+datalog89_store fault_store_datalog89(fault_store *fs);
 
 /* Fail the nth matching operation once; 0 disables failure. */
 void fault_store_fail_scan_open(fault_store *fs, unsigned long n);

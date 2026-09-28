@@ -12,14 +12,14 @@
 
 typedef struct
 {
-    dl89_rel relation;
+    datalog89_rel relation;
     size_t arity;
-    dl89_const *tuple;
+    datalog89_const *tuple;
 } hs_entry;
 
 typedef struct
 {
-    dl89_rel relation;
+    datalog89_rel relation;
     size_t arity;
     size_t head;
     size_t tail;
@@ -29,7 +29,7 @@ typedef struct
     unsigned char *sorted;
 } hs_group;
 
-struct dl89_scan
+struct datalog89_scan
 {
     hash_store *store;
     size_t *indexes;
@@ -69,7 +69,8 @@ static size_t hash_ulong(size_t h, unsigned long value)
     return h;
 }
 
-static size_t hash_key(dl89_rel relation, size_t arity, const dl89_const *tuple)
+static size_t hash_key(datalog89_rel relation, size_t arity,
+                       const datalog89_const *tuple)
 {
     size_t h;
     size_t i;
@@ -84,8 +85,8 @@ static size_t hash_key(dl89_rel relation, size_t arity, const dl89_const *tuple)
     return h;
 }
 
-static int entry_equal(const hs_entry *entry, dl89_rel relation, size_t arity,
-                       const dl89_const *tuple)
+static int entry_equal(const hs_entry *entry, datalog89_rel relation,
+                       size_t arity, const datalog89_const *tuple)
 {
     if (entry->relation != relation)
     {
@@ -99,7 +100,7 @@ static int entry_equal(const hs_entry *entry, dl89_rel relation, size_t arity,
     {
         return 1;
     }
-    return memcmp(entry->tuple, tuple, arity * sizeof(dl89_const)) == 0;
+    return memcmp(entry->tuple, tuple, arity * sizeof(datalog89_const)) == 0;
 }
 
 static int table_rehash(hash_store *store, size_t cap)
@@ -161,8 +162,8 @@ static int table_grow(hash_store *store)
     return table_rehash(store, cap);
 }
 
-static size_t table_find(const hash_store *store, dl89_rel relation,
-                         size_t arity, const dl89_const *tuple)
+static size_t table_find(const hash_store *store, datalog89_rel relation,
+                         size_t arity, const datalog89_const *tuple)
 {
     size_t pos;
 
@@ -225,7 +226,7 @@ static int table_put(hash_store *store, size_t index)
     return 0;
 }
 
-static size_t group_find(const hash_store *store, dl89_rel relation,
+static size_t group_find(const hash_store *store, datalog89_rel relation,
                          size_t arity)
 {
     size_t i;
@@ -308,7 +309,7 @@ static int group_init_orders(hs_group *group, size_t arity)
     return 0;
 }
 
-static int group_add(hash_store *store, dl89_rel relation, size_t arity,
+static int group_add(hash_store *store, datalog89_rel relation, size_t arity,
                      size_t *out)
 {
     hs_group *grown;
@@ -346,8 +347,8 @@ static int group_add(hash_store *store, dl89_rel relation, size_t arity,
     return 0;
 }
 
-static int group_find_or_add(hash_store *store, dl89_rel relation, size_t arity,
-                             size_t *out)
+static int group_find_or_add(hash_store *store, datalog89_rel relation,
+                             size_t arity, size_t *out)
 {
     size_t g;
 
@@ -454,11 +455,11 @@ static void order_push(hash_store *store, size_t g, size_t index)
     }
 }
 
-static int hash_store_insert(void *ctx, dl89_rel relation, size_t arity,
-                             const dl89_const *tuple, int *inserted)
+static int hash_store_insert(void *ctx, datalog89_rel relation, size_t arity,
+                             const datalog89_const *tuple, int *inserted)
 {
     hash_store *store;
-    dl89_const *copy;
+    datalog89_const *copy;
     size_t g;
     size_t index;
 
@@ -524,8 +525,8 @@ static int order_compare(const void *a, const void *b)
 {
     size_t ia;
     size_t ib;
-    dl89_const va;
-    dl89_const vb;
+    datalog89_const va;
+    datalog89_const vb;
 
     ia = *(const size_t *)a;
     ib = *(const size_t *)b;
@@ -559,7 +560,7 @@ static void order_sort(hash_store *store, size_t g, size_t p)
 }
 
 static size_t order_lower(const hash_store *store, size_t g, size_t p,
-                          dl89_const value)
+                          datalog89_const value)
 {
     const hs_group *group;
     size_t lo;
@@ -586,7 +587,8 @@ static size_t order_lower(const hash_store *store, size_t g, size_t p,
 }
 
 static int scan_matches(const hash_store *store, size_t index,
-                        const dl89_const *values, const unsigned char *bound)
+                        const datalog89_const *values,
+                        const unsigned char *bound)
 {
     const hs_entry *entry;
     size_t p;
@@ -624,8 +626,8 @@ static size_t first_bound(const unsigned char *bound, size_t arity)
 }
 
 static int scan_linked(const hash_store *store, size_t g,
-                       const dl89_const *values, const unsigned char *bound,
-                       struct dl89_scan *scan)
+                       const datalog89_const *values,
+                       const unsigned char *bound, struct datalog89_scan *scan)
 {
     const hs_group *group;
     size_t index;
@@ -666,8 +668,9 @@ static int scan_linked(const hash_store *store, size_t g,
     return 0;
 }
 
-static int scan_bound(hash_store *store, size_t g, const dl89_const *values,
-                      const unsigned char *bound, struct dl89_scan *scan)
+static int scan_bound(hash_store *store, size_t g,
+                      const datalog89_const *values, const unsigned char *bound,
+                      struct datalog89_scan *scan)
 {
     size_t p;
     size_t lo;
@@ -723,12 +726,13 @@ static int scan_bound(hash_store *store, size_t g, const dl89_const *values,
     return 0;
 }
 
-static int hash_store_scan_open(void *ctx, dl89_rel relation, size_t arity,
-                                const dl89_const *values,
-                                const unsigned char *bound, dl89_scan **out)
+static int hash_store_scan_open(void *ctx, datalog89_rel relation, size_t arity,
+                                const datalog89_const *values,
+                                const unsigned char *bound,
+                                datalog89_scan **out)
 {
     hash_store *store;
-    struct dl89_scan *scan;
+    struct datalog89_scan *scan;
     size_t g;
     int rc;
 
@@ -768,10 +772,10 @@ static int hash_store_scan_open(void *ctx, dl89_rel relation, size_t arity,
     return 0;
 }
 
-static int hash_store_scan_next(void *ctx, dl89_scan *scan_ptr,
-                                dl89_const *tuple, int *found)
+static int hash_store_scan_next(void *ctx, datalog89_scan *scan_ptr,
+                                datalog89_const *tuple, int *found)
 {
-    struct dl89_scan *scan;
+    struct datalog89_scan *scan;
     const hs_entry *entry;
 
     (void)ctx;
@@ -784,16 +788,16 @@ static int hash_store_scan_next(void *ctx, dl89_scan *scan_ptr,
     entry = &scan->store->entries[scan->indexes[scan->pos]];
     if (entry->arity > 0)
     {
-        memcpy(tuple, entry->tuple, entry->arity * sizeof(dl89_const));
+        memcpy(tuple, entry->tuple, entry->arity * sizeof(datalog89_const));
     }
     scan->pos = scan->pos + 1;
     *found = 1;
     return 0;
 }
 
-static void hash_store_scan_close(void *ctx, dl89_scan *scan_ptr)
+static void hash_store_scan_close(void *ctx, datalog89_scan *scan_ptr)
 {
-    struct dl89_scan *scan;
+    struct datalog89_scan *scan;
 
     (void)ctx;
     scan = scan_ptr;
@@ -802,7 +806,7 @@ static void hash_store_scan_close(void *ctx, dl89_scan *scan_ptr)
     free(scan);
 }
 
-static const dl89_store_ops hash_store_ops = {
+static const datalog89_store_ops hash_store_ops = {
     hash_store_insert, hash_store_scan_open, hash_store_scan_next,
     hash_store_scan_close};
 
@@ -854,17 +858,17 @@ void hash_store_free(hash_store *store)
     free(store);
 }
 
-dl89_store hash_store_dl89(hash_store *store)
+datalog89_store hash_store_datalog89(hash_store *store)
 {
-    dl89_store result;
+    datalog89_store result;
 
     result.ctx = store;
     result.ops = &hash_store_ops;
     return result;
 }
 
-int hash_store_has(const hash_store *store, dl89_rel relation, size_t arity,
-                   const dl89_const *tuple)
+int hash_store_has(const hash_store *store, datalog89_rel relation,
+                   size_t arity, const datalog89_const *tuple)
 {
     if (table_find(store, relation, arity, tuple) != 0)
     {
@@ -873,7 +877,7 @@ int hash_store_has(const hash_store *store, dl89_rel relation, size_t arity,
     return 0;
 }
 
-size_t hash_store_count(const hash_store *store, dl89_rel relation,
+size_t hash_store_count(const hash_store *store, datalog89_rel relation,
                         size_t arity)
 {
     size_t g;

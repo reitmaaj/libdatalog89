@@ -1,15 +1,16 @@
 /* fault_mem.c - allocation-failure injection behind the internal memory seam.
  *
- * This fixture defines dl89_priv_mem_alloc/realloc/free. The allocation-failure
- * campaign links the core library without src/dl89_priv_mem.o so these symbols
- * replace the default allocator. Allocation number n (1-based) returns NULL
- * once; 0 disables failure. Counters keep running while failure is disabled,
- * which lets a test measure how many allocations a path performs.
+ * This fixture defines datalog89_priv_mem_alloc/realloc/free. The
+ * allocation-failure campaign links the core library without
+ * src/datalog89_priv_mem.o so these symbols replace the default allocator.
+ * Allocation number n (1-based) returns NULL once; 0 disables failure. Counters
+ * keep running while failure is disabled, which lets a test measure how many
+ * allocations a path performs.
  */
 
 #include <stdlib.h>
 
-#include "dl89_priv.h"
+#include "datalog89_priv.h"
 #include "fault_mem.h"
 
 static unsigned long fm_count;
@@ -53,7 +54,7 @@ static int should_fail(void)
     return fm_count == fm_fail_at;
 }
 
-void *dl89_priv_mem_alloc(size_t size)
+void *datalog89_priv_mem_alloc(size_t size)
 {
     if (size == 0)
     {
@@ -66,7 +67,7 @@ void *dl89_priv_mem_alloc(size_t size)
     return malloc(size);
 }
 
-void *dl89_priv_mem_realloc(void *ptr, size_t size)
+void *datalog89_priv_mem_realloc(void *ptr, size_t size)
 {
     if (size == 0)
     {
@@ -79,7 +80,7 @@ void *dl89_priv_mem_realloc(void *ptr, size_t size)
     return realloc(ptr, size);
 }
 
-void dl89_priv_mem_free(void *ptr)
+void datalog89_priv_mem_free(void *ptr)
 {
     if (ptr != NULL)
     {

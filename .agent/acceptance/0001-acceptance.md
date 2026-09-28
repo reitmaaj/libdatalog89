@@ -1,4 +1,4 @@
-# libdl89 acceptance tests — core semantics
+# libdatalog89 acceptance tests — core semantics
 
 The library MUST exhibit the behavior under "must exhibit" and MUST reject,
 avoid, refuse, fail safely, or report an error for the behavior under "must
@@ -7,20 +7,20 @@ and extra tuples fail).
 
 ## Must exhibit
 
-- B01: a client including only `<dl89.h>` compiles under
+- B01: a client including only `<datalog89.h>` compiles under
   `cc -std=c89 -pedantic -Wall -Wextra -Werror -Wno-long-long` with GCC and Clang.
 - B02: all production sources compile under the same strict C89 flags with
   zero diagnostics (the green baseline is stronger and is the gate of record).
-- B04: a translation unit containing only `<dl89.h>` and `main` compiles and
+- B04: a translation unit containing only `<datalog89.h>` and `main` compiles and
   links; no private header leaks through the public interface.
-- A01: `dl89_eval_create` on a valid store returns `DL89_OK`, a non-NULL
-  evaluator, and `dl89_eval_destroy` leaves no leak.
-- O01/O02/O03: `dl89_eval_add_rule` deep-copies rules; caller buffers may be
+- A01: `datalog89_eval_create` on a valid store returns `DATALOG89_OK`, a non-NULL
+  evaluator, and `datalog89_eval_destroy` leaves no leak.
+- O01/O02/O03: `datalog89_eval_add_rule` deep-copies rules; caller buffers may be
   overwritten or reused; destroying an evaluator releases the copied program.
 - V05/V06/V08/V12/V13: variable-free rules, ground facts, repeated variables,
   zero identifiers, and `ULONG_MAX` identifiers are accepted and behave
   exactly as ordinary identifiers.
-- F01–F05: `dl89_eval_add_fact` has set semantics, exact tuples, persistence
+- F01–F05: `datalog89_eval_add_fact` has set semantics, exact tuples, persistence
   across runs, and facts added between runs are used on the next run.
 - E01–E10: unary copy, constant filtering, constants in heads,
   repeated-variable equality, two-way joins, failed joins, cross products,
@@ -52,16 +52,16 @@ and extra tuples fail).
 
 ## Must reject
 
-- A02/A03/A04: `dl89_eval_create` with NULL config, NULL out, NULL ops, or a
-  missing required callback returns `DL89_EINVAL` and sets `*out = NULL`.
+- A02/A03/A04: `datalog89_eval_create` with NULL config, NULL out, NULL ops, or a
+  missing required callback returns `DATALOG89_EINVAL` and sets `*out = NULL`.
 - V01/V02: an unknown term kind in the head or any body position returns
-  `DL89_EPROGRAM`; no rule is installed.
+  `DATALOG89_EPROGRAM`; no rule is installed.
 - V03/V04/V07: an unsafe head variable, a partially unsafe head, or a
-  nonground zero-body rule returns `DL89_EPROGRAM`.
+  nonground zero-body rule returns `DATALOG89_EPROGRAM`.
 - V09/V10/V11: relation arity conflicts inside a rule, across rules, or
-  through `dl89_eval_add_fact` return `DL89_EPROGRAM`; previously accepted
+  through `datalog89_eval_add_fact` return `DATALOG89_EPROGRAM`; previously accepted
   rules remain installed and usable.
-- G02: generated malformed rules return `DL89_EPROGRAM` and leave the
+- G02: generated malformed rules return `DATALOG89_EPROGRAM` and leave the
   evaluator state unchanged.
 - Purity boundary (U-1): the suite must not interpret an impure caller store
   as a library failure; such behavior is outside the API preconditions.

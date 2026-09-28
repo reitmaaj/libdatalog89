@@ -1,11 +1,11 @@
 /* test_order.c - generated programs must reach the same fixed point under
- * reversed rule insertion and reversed fact insertion. DL89_DIFF_N selects
+ * reversed rule insertion and reversed fact insertion. DATALOG89_DIFF_N selects
  * the corpus size (default 10000). */
 
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <dl89.h>
+#include <datalog89.h>
 
 #include "gen.h"
 #include "ref_eval.h"
@@ -13,11 +13,11 @@
 
 static int seed_store(ref_store *store, const gen_case *c, int reverse)
 {
-    dl89_store s;
+    datalog89_store s;
     size_t i;
     int inserted;
 
-    s = ref_store_dl89(store);
+    s = ref_store_datalog89(store);
     for (i = 0; i < c->fact_count; ++i)
     {
         size_t j;
@@ -35,9 +35,9 @@ static int seed_store(ref_store *store, const gen_case *c, int reverse)
 
 static int run_program(ref_store *store, const gen_case *c, int reverse)
 {
-    dl89_eval_config config;
-    dl89_eval *eval;
-    dl89_rule rules[GEN_MAX_RULES];
+    datalog89_eval_config config;
+    datalog89_eval *eval;
+    datalog89_rule rules[GEN_MAX_RULES];
     size_t i;
     int st;
 
@@ -48,24 +48,24 @@ static int run_program(ref_store *store, const gen_case *c, int reverse)
         j = reverse ? c->rule_count - 1 - i : i;
         rules[i] = c->rules[j].rule;
     }
-    config.store = ref_store_dl89(store);
+    config.store = ref_store_datalog89(store);
     eval = NULL;
-    st = dl89_eval_create(&config, &eval);
-    if (st != DL89_OK)
+    st = datalog89_eval_create(&config, &eval);
+    if (st != DATALOG89_OK)
     {
         return st;
     }
     for (i = 0; i < c->rule_count; ++i)
     {
-        st = dl89_eval_add_rule(eval, &rules[i]);
-        if (st != DL89_OK)
+        st = datalog89_eval_add_rule(eval, &rules[i]);
+        if (st != DATALOG89_OK)
         {
-            dl89_eval_destroy(eval);
+            datalog89_eval_destroy(eval);
             return st;
         }
     }
-    st = dl89_eval_run(eval);
-    dl89_eval_destroy(eval);
+    st = datalog89_eval_run(eval);
+    datalog89_eval_destroy(eval);
     return st;
 }
 
@@ -87,7 +87,7 @@ int main(void)
     unsigned long seed;
     int failed;
 
-    env = getenv("DL89_DIFF_N");
+    env = getenv("DATALOG89_DIFF_N");
     total = 10000;
     if (env != NULL)
     {
@@ -100,7 +100,7 @@ int main(void)
         ref_store *forward;
         ref_store *reversed;
         ref_store *oracle;
-        dl89_rule rules[GEN_MAX_RULES];
+        datalog89_rule rules[GEN_MAX_RULES];
         size_t i;
         int st;
 
@@ -124,13 +124,13 @@ int main(void)
             return 1;
         }
         st = run_program(forward, &c, 0);
-        if (st != DL89_OK)
+        if (st != DATALOG89_OK)
         {
             fprintf(stderr, "seed %lu: forward run => %d\n", seed, st);
             return 1;
         }
         st = run_program(reversed, &c, 1);
-        if (st != DL89_OK)
+        if (st != DATALOG89_OK)
         {
             fprintf(stderr, "seed %lu: reversed run => %d\n", seed, st);
             return 1;
@@ -139,7 +139,7 @@ int main(void)
         {
             rules[i] = c.rules[i].rule;
         }
-        if (ref_eval_run(ref_store_dl89(oracle), rules, c.rule_count) != 0)
+        if (ref_eval_run(ref_store_datalog89(oracle), rules, c.rule_count) != 0)
         {
             fprintf(stderr, "seed %lu: reference evaluator failed\n", seed);
             return 1;

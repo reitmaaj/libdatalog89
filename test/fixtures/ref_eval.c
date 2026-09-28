@@ -13,9 +13,9 @@
 
 typedef struct
 {
-    dl89_rel relation;
+    datalog89_rel relation;
     size_t arity;
-    dl89_const *tuple;
+    datalog89_const *tuple;
 } re_item;
 
 typedef struct
@@ -29,8 +29,8 @@ typedef struct
 
 typedef struct
 {
-    dl89_var var;
-    dl89_const value;
+    datalog89_var var;
+    datalog89_const value;
     int bound;
 } re_binding;
 
@@ -43,8 +43,8 @@ typedef struct
 
 typedef struct
 {
-    dl89_store store;
-    dl89_const *values;
+    datalog89_store store;
+    datalog89_const *values;
     unsigned char *bound;
     size_t max_arity;
 } re_ctx;
@@ -56,7 +56,8 @@ static void env_init(re_env *env, re_binding *storage, size_t cap)
     env->cap = cap;
 }
 
-static int env_find(const re_env *env, dl89_var var, dl89_const *value)
+static int env_find(const re_env *env, datalog89_var var,
+                    datalog89_const *value)
 {
     size_t i;
 
@@ -71,7 +72,7 @@ static int env_find(const re_env *env, dl89_var var, dl89_const *value)
     return 0;
 }
 
-static int env_bind(re_env *env, dl89_var var, dl89_const value)
+static int env_bind(re_env *env, datalog89_var var, datalog89_const value)
 {
     if (env->count == env->cap)
     {
@@ -84,10 +85,10 @@ static int env_bind(re_env *env, dl89_var var, dl89_const value)
     return 1;
 }
 
-static int term_value(const dl89_term *term, const re_env *env,
-                      dl89_const *value)
+static int term_value(const datalog89_term *term, const re_env *env,
+                      datalog89_const *value)
 {
-    if (term->kind == DL89_TERM_CONST)
+    if (term->kind == DATALOG89_TERM_CONST)
     {
         *value = term->u.constant;
         return 1;
@@ -95,11 +96,11 @@ static int term_value(const dl89_term *term, const re_env *env,
     return env_find(env, term->u.variable, value);
 }
 
-static int unify_atom(const dl89_atom *atom, const dl89_const *tuple,
+static int unify_atom(const datalog89_atom *atom, const datalog89_const *tuple,
                       re_env *env, size_t *added)
 {
     size_t p;
-    dl89_const value;
+    datalog89_const value;
 
     *added = 0;
     for (p = 0; p < atom->arity; ++p)
@@ -135,11 +136,11 @@ static void env_rollback(re_env *env, size_t added)
     }
 }
 
-static int queue_push(re_queue *queue, dl89_rel relation, size_t arity,
-                      const dl89_const *tuple)
+static int queue_push(re_queue *queue, datalog89_rel relation, size_t arity,
+                      const datalog89_const *tuple)
 {
     re_item *grown;
-    dl89_const *copy;
+    datalog89_const *copy;
     size_t cap;
 
     if (queue->count == queue->cap)
@@ -201,11 +202,11 @@ static void queue_clear(re_queue *queue)
     queue->pos = 0;
 }
 
-static int emit_head(re_ctx *ctx, const dl89_rule *rule, re_env *env,
+static int emit_head(re_ctx *ctx, const datalog89_rule *rule, re_env *env,
                      re_queue *queue)
 {
     size_t p;
-    dl89_const value;
+    datalog89_const value;
     int inserted;
     int rc;
 
@@ -235,13 +236,13 @@ static int emit_head(re_ctx *ctx, const dl89_rule *rule, re_env *env,
     return 1;
 }
 
-static int eval_body(re_ctx *ctx, const dl89_rule *rule, size_t depth,
+static int eval_body(re_ctx *ctx, const datalog89_rule *rule, size_t depth,
                      size_t skip, const re_item *fact, re_env *env,
                      re_queue *queue)
 {
-    const dl89_atom *atom;
-    dl89_scan *scan;
-    dl89_const tuple[8];
+    const datalog89_atom *atom;
+    datalog89_scan *scan;
+    datalog89_const tuple[8];
     size_t added;
     size_t p;
     int found;
@@ -311,7 +312,7 @@ static int eval_body(re_ctx *ctx, const dl89_rule *rule, size_t depth,
     return 1;
 }
 
-static int try_fact(re_ctx *ctx, const dl89_rule *rules, size_t rule_count,
+static int try_fact(re_ctx *ctx, const datalog89_rule *rules, size_t rule_count,
                     const re_item *fact, re_binding *storage,
                     size_t storage_cap, re_queue *queue)
 {
@@ -347,7 +348,7 @@ static int try_fact(re_ctx *ctx, const dl89_rule *rules, size_t rule_count,
     return 1;
 }
 
-static size_t total_terms(const dl89_rule *rule)
+static size_t total_terms(const datalog89_rule *rule)
 {
     size_t total;
     size_t b;
@@ -360,7 +361,7 @@ static size_t total_terms(const dl89_rule *rule)
     return total;
 }
 
-static size_t max_arity_of(const dl89_rule *rule)
+static size_t max_arity_of(const datalog89_rule *rule)
 {
     size_t max;
     size_t b;
@@ -376,7 +377,7 @@ static size_t max_arity_of(const dl89_rule *rule)
     return max;
 }
 
-static int seed_zero_body(re_ctx *ctx, const dl89_rule *rules,
+static int seed_zero_body(re_ctx *ctx, const datalog89_rule *rules,
                           size_t rule_count, re_queue *queue)
 {
     size_t r;
@@ -397,11 +398,11 @@ static int seed_zero_body(re_ctx *ctx, const dl89_rule *rules,
     return 1;
 }
 
-static int seed_relation(re_ctx *ctx, dl89_rel relation, size_t arity,
+static int seed_relation(re_ctx *ctx, datalog89_rel relation, size_t arity,
                          re_queue *queue)
 {
-    dl89_scan *scan;
-    dl89_const tuple[8];
+    datalog89_scan *scan;
+    datalog89_const tuple[8];
     size_t p;
     int found;
     int rc;
@@ -441,8 +442,8 @@ static int seed_relation(re_ctx *ctx, dl89_rel relation, size_t arity,
     return 1;
 }
 
-static int seen_contains(const dl89_rel *rels, const size_t *arities,
-                         size_t count, dl89_rel relation, size_t arity)
+static int seen_contains(const datalog89_rel *rels, const size_t *arities,
+                         size_t count, datalog89_rel relation, size_t arity)
 {
     size_t i;
 
@@ -459,10 +460,10 @@ static int seen_contains(const dl89_rel *rels, const size_t *arities,
     return 0;
 }
 
-static int seed_initial(re_ctx *ctx, const dl89_rule *rules, size_t rule_count,
-                        re_queue *queue)
+static int seed_initial(re_ctx *ctx, const datalog89_rule *rules,
+                        size_t rule_count, re_queue *queue)
 {
-    dl89_rel rels[64];
+    datalog89_rel rels[64];
     size_t arities[64];
     size_t seen;
     size_t r;
@@ -473,7 +474,7 @@ static int seed_initial(re_ctx *ctx, const dl89_rule *rules, size_t rule_count,
     {
         for (b = 0; b <= rules[r].body_count; ++b)
         {
-            const dl89_atom *atom;
+            const datalog89_atom *atom;
 
             if (b == 0)
             {
@@ -503,7 +504,8 @@ static int seed_initial(re_ctx *ctx, const dl89_rule *rules, size_t rule_count,
     return 1;
 }
 
-int ref_eval_run(dl89_store store, const dl89_rule *rules, size_t rule_count)
+int ref_eval_run(datalog89_store store, const datalog89_rule *rules,
+                 size_t rule_count)
 {
     re_ctx ctx;
     re_queue queue;

@@ -2,57 +2,57 @@ set shell := ["sh", "-eu", "-c"]
 
 CC := env_var_or_default("CC", "cc")
 GREEN := env_var_or_default("GREEN", "../green/.agent/tmp/build/green")
-DIFF_N := env_var_or_default("DL89_DIFF_N", "10000")
-DIFF_SAN_N := env_var_or_default("DL89_DIFF_SAN_N", "1000")
+DIFF_N := env_var_or_default("DATALOG89_DIFF_N", "10000")
+DIFF_SAN_N := env_var_or_default("DATALOG89_DIFF_SAN_N", "1000")
 
 STRICT := "-std=c89 -pedantic-errors -Wall -Wextra -Werror -Wconversion -Wsign-conversion -Wstrict-prototypes -Wmissing-prototypes -Wold-style-definition -Wundef -Wshadow -Wformat=2 -Wno-long-long"
 INCS := "-Iinclude -Isrc -Itest -Itest/fixtures -Itest/differential"
 
 # Library translation units; CORE omits the memory seam so the allocation
 # fault fixture can be linked in its place.
-CORE := "src/dl89_eval.c src/dl89_rule.c src/dl89_join.c src/dl89_fixpoint.c src/dl89_status.c"
-MEM := "src/dl89_priv_mem.c"
+CORE := "src/datalog89_eval.c src/datalog89_rule.c src/datalog89_join.c src/datalog89_fixpoint.c src/datalog89_status.c"
+MEM := "src/datalog89_priv_mem.c"
 SRC := CORE + " " + MEM
 
 default: build
 
-# Compile every library translation unit and archive build/libdl89.a.
+# Compile every library translation unit and archive build/libdatalog89.a.
 build:
 	mkdir -p build
 	@for f in {{SRC}}; do \
 	    name=$(basename "$f" .c); \
 	    {{CC}} {{STRICT}} -Iinclude -Isrc -c "$f" -o "build/$name.o" || exit 1; \
 	done
-	rm -f build/libdl89.a build/libdl89-fault.a
+	rm -f build/libdatalog89.a build/libdatalog89-fault.a
 	@objs=""; for f in {{SRC}}; do \
 	    name=$(basename "$f" .c); \
 	    objs="$objs build/$name.o"; \
 	done; \
-	ar rcs build/libdl89.a $objs
+	ar rcs build/libdatalog89.a $objs
 	@objs=""; for f in {{CORE}}; do \
 	    name=$(basename "$f" .c); \
 	    objs="$objs build/$name.o"; \
 	done; \
-	ar rcs build/libdl89-fault.a $objs
+	ar rcs build/libdatalog89-fault.a $objs
 
 # Compile shared test fixtures. fault_mem is kept in its own archive so it
-# can replace src/dl89_priv_mem.o for the allocation-failure campaign.
+# can replace src/datalog89_priv_mem.o for the allocation-failure campaign.
 fixtures: build
 	@for f in test/fixtures/*.c; do \
 	    [ -e "$f" ] || continue; \
 	    name=$(basename "$f" .c); \
 	    {{CC}} {{STRICT}} -Wno-unused-function {{INCS}} -c "$f" -o "build/fix_$name.o" || exit 1; \
 	done
-	rm -f build/libdl89-fixtures.a build/libdl89-faultmem.a
+	rm -f build/libdatalog89-fixtures.a build/libdatalog89-faultmem.a
 	@objs=""; for f in test/fixtures/*.c; do \
 	    [ -e "$f" ] || continue; \
 	    name=$(basename "$f" .c); \
 	    if [ "$name" = "fault_mem" ]; then continue; fi; \
 	    objs="$objs build/fix_$name.o"; \
 	done; \
-	if [ -n "$objs" ]; then ar rcs build/libdl89-fixtures.a $objs; fi
+	if [ -n "$objs" ]; then ar rcs build/libdatalog89-fixtures.a $objs; fi
 	@if [ -e build/fix_fault_mem.o ]; then \
-	    ar rcs build/libdl89-faultmem.a build/fix_fault_mem.o; \
+	    ar rcs build/libdatalog89-faultmem.a build/fix_fault_mem.o; \
 	fi
 
 # Compile-only gate: the public header must compile standalone in strict C89
@@ -70,19 +70,19 @@ headers:
 
 # Smoke test first: one end-to-end path through the library.
 smoke: fixtures
-	{{CC}} {{STRICT}} -Wno-unused-function {{INCS}} -o build/smoke test/smoke.c build/libdl89-fixtures.a build/libdl89.a
+	{{CC}} {{STRICT}} -Wno-unused-function {{INCS}} -o build/smoke test/smoke.c build/libdatalog89-fixtures.a build/libdatalog89.a
 	./build/smoke
 
 # Unit tests, one small program per concern. test_allocfail links the core
-# without src/dl89_priv_mem.o so the fault allocator supplies the memory seam.
+# without src/datalog89_priv_mem.o so the fault allocator supplies the memory seam.
 unit: fixtures
 	@for t in test/unit/test_*.c; do \
 	    [ -e "$t" ] || continue; \
 	    name=$(basename "$t" .c); \
 	    if [ "$name" = "test_allocfail" ]; then \
-	        {{CC}} {{STRICT}} -Wno-unused-function {{INCS}} -o "build/$name" "$t" build/libdl89-fault.a build/libdl89-faultmem.a build/libdl89-fixtures.a || exit 1; \
+	        {{CC}} {{STRICT}} -Wno-unused-function {{INCS}} -o "build/$name" "$t" build/libdatalog89-fault.a build/libdatalog89-faultmem.a build/libdatalog89-fixtures.a || exit 1; \
 	    else \
-	        {{CC}} {{STRICT}} -Wno-unused-function {{INCS}} -o "build/$name" "$t" build/libdl89-fixtures.a build/libdl89.a || exit 1; \
+	        {{CC}} {{STRICT}} -Wno-unused-function {{INCS}} -o "build/$name" "$t" build/libdatalog89-fixtures.a build/libdatalog89.a || exit 1; \
 	    fi; \
 	    ./build/$name || exit 1; \
 	done
@@ -90,22 +90,22 @@ unit: fixtures
 # Generated differential tests against the independent reference evaluator.
 differential: fixtures
 	@if [ -e test/differential/test_diff.c ]; then \
-	    {{CC}} {{STRICT}} -Wno-unused-function {{INCS}} -o build/test_diff test/differential/test_diff.c test/differential/gen.c build/libdl89-fixtures.a build/libdl89.a || exit 1; \
-	    DL89_DIFF_N={{DIFF_N}} ./build/test_diff || exit 1; \
+	    {{CC}} {{STRICT}} -Wno-unused-function {{INCS}} -o build/test_diff test/differential/test_diff.c test/differential/gen.c build/libdatalog89-fixtures.a build/libdatalog89.a || exit 1; \
+	    DATALOG89_DIFF_N={{DIFF_N}} ./build/test_diff || exit 1; \
 	fi
 	@if [ -e test/differential/test_invalid.c ]; then \
-	    {{CC}} {{STRICT}} -Wno-unused-function {{INCS}} -o build/test_invalid test/differential/test_invalid.c build/libdl89-fixtures.a build/libdl89.a || exit 1; \
-	    DL89_DIFF_N={{DIFF_N}} ./build/test_invalid || exit 1; \
+	    {{CC}} {{STRICT}} -Wno-unused-function {{INCS}} -o build/test_invalid test/differential/test_invalid.c build/libdatalog89-fixtures.a build/libdatalog89.a || exit 1; \
+	    DATALOG89_DIFF_N={{DIFF_N}} ./build/test_invalid || exit 1; \
 	fi
 	@if [ -e test/differential/test_order.c ]; then \
-	    {{CC}} {{STRICT}} -Wno-unused-function {{INCS}} -o build/test_order test/differential/test_order.c test/differential/gen.c build/libdl89-fixtures.a build/libdl89.a || exit 1; \
-	    DL89_DIFF_N={{DIFF_N}} ./build/test_order || exit 1; \
+	    {{CC}} {{STRICT}} -Wno-unused-function {{INCS}} -o build/test_order test/differential/test_order.c test/differential/gen.c build/libdatalog89-fixtures.a build/libdatalog89.a || exit 1; \
+	    DATALOG89_DIFF_N={{DIFF_N}} ./build/test_order || exit 1; \
 	fi
 
 # Stress correctness (bounded, non-benchmark workloads).
 stress: fixtures
 	@if [ -e test/stress/test_stress.c ]; then \
-	    {{CC}} {{STRICT}} -Wno-unused-function {{INCS}} -o build/test_stress test/stress/test_stress.c build/libdl89-fixtures.a build/libdl89.a || exit 1; \
+	    {{CC}} {{STRICT}} -Wno-unused-function {{INCS}} -o build/test_stress test/stress/test_stress.c build/libdatalog89-fixtures.a build/libdatalog89.a || exit 1; \
 	    ./build/test_stress || exit 1; \
 	fi
 

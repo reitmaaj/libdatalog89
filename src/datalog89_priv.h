@@ -1,0 +1,116 @@
+#ifndef DATALOG89_PRIV_INTERNAL_H
+#define DATALOG89_PRIV_INTERNAL_H
+
+#include <stddef.h>
+
+#include <datalog89.h>
+
+/* The empty GREEN_PURE annotation marks a function as pure for green. */
+#define GREEN_PURE
+
+#define DATALOG89_PRIV_NO_SLOT ((size_t)-1)
+
+/* Memory seam: production datalog89_priv_mem.c wraps malloc; the
+ * allocation-fault fixture implements these three symbols instead. */
+void *datalog89_priv_mem_alloc(size_t size);
+void *datalog89_priv_mem_realloc(void *ptr, size_t size);
+void datalog89_priv_mem_free(void *ptr);
+
+/* Compiled term: a constant or a variable-slot reference. */
+typedef struct
+{
+    int kind;
+    datalog89_const constant;
+    size_t slot;
+} datalog89_priv_cterm;
+
+typedef struct
+{
+    datalog89_rel relation;
+    size_t arity;
+    datalog89_priv_cterm *terms;
+} datalog89_priv_catom;
+
+typedef struct
+{
+    datalog89_priv_catom head;
+    size_t body_count;
+    datalog89_priv_catom *body;
+    size_t var_count;
+    datalog89_const *env;
+    unsigned char *bound;
+    datalog89_const *values;
+    unsigned char *bvalues;
+    datalog89_const *tuple;
+    size_t tuple_cap;
+    size_t *bound_log;
+} datalog89_priv_crule;
+
+typedef struct
+{
+    datalog89_rel relation;
+    size_t arity;
+} datalog89_priv_arity;
+
+typedef struct
+{
+    datalog89_rel relation;
+    size_t arity;
+    datalog89_const *tuples;
+    size_t count;
+    size_t cap;
+} datalog89_priv_delta;
+
+typedef struct
+{
+    datalog89_priv_delta *entries;
+    size_t count;
+    size_t cap;
+    size_t total;
+} datalog89_priv_delta_table;
+
+struct datalog89_eval
+{
+    datalog89_store store;
+    datalog89_priv_crule *rules;
+    size_t rule_count;
+    size_t rule_cap;
+    datalog89_priv_arity *arities;
+    size_t arity_count;
+    size_t arity_cap;
+    int running;
+};
+
+int datalog89_priv_store_valid(const datalog89_store *store);
+
+int datalog89_priv_rule_check(const datalog89_eval *eval,
+                              const datalog89_rule *rule);
+int datalog89_priv_rule_install(datalog89_eval *eval,
+                                const datalog89_rule *rule);
+
+int datalog89_priv_crule_compile(const datalog89_rule *rule,
+                                 datalog89_priv_crule *out);
+void datalog89_priv_crule_release(datalog89_priv_crule *rule);
+const datalog89_priv_arity *
+datalog89_priv_registry_find(const datalog89_eval *eval,
+                             datalog89_rel relation);
+int datalog89_priv_registry_add(datalog89_eval *eval, datalog89_rel relation,
+                                size_t arity);
+void datalog89_priv_registry_truncate(datalog89_eval *eval, size_t count);
+
+void datalog89_priv_delta_table_clear(datalog89_priv_delta_table *table);
+void datalog89_priv_delta_table_free(datalog89_priv_delta_table *table);
+int datalog89_priv_delta_record(datalog89_priv_delta_table *table,
+                                datalog89_rel relation, size_t arity,
+                                const datalog89_const *tuple);
+const datalog89_priv_delta *
+datalog89_priv_delta_find(const datalog89_priv_delta_table *table,
+                          datalog89_rel relation, size_t arity);
+
+int datalog89_priv_join_rule(datalog89_eval *eval, datalog89_priv_crule *rule,
+                             datalog89_priv_delta_table *sink,
+                             const datalog89_priv_delta *delta,
+                             size_t delta_pos);
+int datalog89_priv_fixpoint_run(datalog89_eval *eval);
+
+#endif

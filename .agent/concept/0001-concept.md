@@ -1,8 +1,8 @@
-# libdl89 concept
+# libdatalog89 concept
 
 ## Purpose
 
-`libdl89` implements a small embeddable Datalog evaluation core. It accepts
+`libdatalog89` implements a small embeddable Datalog evaluation core. It accepts
 facts and rules and computes the least fixed point over a caller-supplied
 relational store.
 
@@ -24,22 +24,22 @@ no new fact can be inserted. No ordering among facts carries semantic meaning.
 
 ## Identifier model
 
-    typedef unsigned long dl89_const;
-    typedef unsigned long dl89_rel;
-    typedef unsigned long dl89_var;
+    typedef unsigned long datalog89_const;
+    typedef unsigned long datalog89_rel;
+    typedef unsigned long datalog89_var;
 
-The caller assigns all meaning. `libdl89` never receives strings. Variables
+The caller assigns all meaning. `libdatalog89` never receives strings. Variables
 only need uniqueness within one rule. Every `unsigned long` value, including
 `0` and `ULONG_MAX`, is an ordinary identifier.
 
 ## Boundary
 
-`libdl89` owns exactly: rule validation, variable binding, unification with
+`libdatalog89` owns exactly: rule validation, variable binding, unification with
 ground tuples, body joins, head instantiation, recursive evaluation,
 duplicate suppression through store insertion, least-fixed-point scheduling,
 and delta evaluation if implemented.
 
-`libdl89` explicitly does not own: text syntax, parser, lexer, AST, pretty
+`libdatalog89` explicitly does not own: text syntax, parser, lexer, AST, pretty
 printing, constant/relation names, symbol interning, source diagnostics,
 SQLite schemas, transactions, persistence, modules, imports, namespaces,
 reflective representation, clause/atom IDs, list encodings, rule discovery,
@@ -53,15 +53,15 @@ updates, truth maintenance, foreign side effects, and I/O predicates.
               |
     application program model (reflective encoding, snapshots)
               |
-           dl89_rule[]
+           datalog89_rule[]
               |
-    libdl89 (bindings, joins, fixed point)
+    libdatalog89 (bindings, joins, fixed point)
               |
-            dl89_store
+            datalog89_store
               |
     application relation store (symbols, tuples, SQLite, indexes)
 
-The architectural rule: `libdl89` evaluates a fixed Datalog program against
+The architectural rule: `libdatalog89` evaluates a fixed Datalog program against
 an abstract relational database; the caller decides how that program and
 database are represented, persisted, named, reflected, mutated, and
 presented.

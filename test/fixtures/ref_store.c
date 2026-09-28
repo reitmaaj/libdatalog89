@@ -14,12 +14,12 @@
 
 typedef struct
 {
-    dl89_rel relation;
+    datalog89_rel relation;
     size_t arity;
-    dl89_const *tuple;
+    datalog89_const *tuple;
 } ref_tuple;
 
-struct dl89_scan
+struct datalog89_scan
 {
     ref_store *store;
     size_t *indexes;
@@ -40,8 +40,8 @@ struct ref_store
     unsigned long new_inserts;
 };
 
-static int tuple_equal(const ref_tuple *tuple, dl89_rel relation, size_t arity,
-                       const dl89_const *values)
+static int tuple_equal(const ref_tuple *tuple, datalog89_rel relation,
+                       size_t arity, const datalog89_const *values)
 {
     if (tuple->relation != relation)
     {
@@ -55,11 +55,11 @@ static int tuple_equal(const ref_tuple *tuple, dl89_rel relation, size_t arity,
     {
         return 1;
     }
-    return memcmp(tuple->tuple, values, arity * sizeof(dl89_const)) == 0;
+    return memcmp(tuple->tuple, values, arity * sizeof(datalog89_const)) == 0;
 }
 
-static int tuple_matches(const ref_tuple *tuple, dl89_rel relation,
-                         size_t arity, const dl89_const *values,
+static int tuple_matches(const ref_tuple *tuple, datalog89_rel relation,
+                         size_t arity, const datalog89_const *values,
                          const unsigned char *bound)
 {
     size_t p;
@@ -89,12 +89,12 @@ static int tuple_matches(const ref_tuple *tuple, dl89_rel relation,
     return 1;
 }
 
-static int ref_store_insert(void *ctx, dl89_rel relation, size_t arity,
-                            const dl89_const *tuple, int *inserted)
+static int ref_store_insert(void *ctx, datalog89_rel relation, size_t arity,
+                            const datalog89_const *tuple, int *inserted)
 {
     ref_store *store;
     ref_tuple *grown;
-    dl89_const *copy;
+    datalog89_const *copy;
     size_t cap;
     size_t i;
 
@@ -146,7 +146,7 @@ static int ref_store_insert(void *ctx, dl89_rel relation, size_t arity,
     return 0;
 }
 
-static void order_indexes(struct dl89_scan *scan)
+static void order_indexes(struct datalog89_scan *scan)
 {
     size_t i;
     size_t j;
@@ -178,12 +178,12 @@ static void order_indexes(struct dl89_scan *scan)
     }
 }
 
-static int ref_store_scan_open(void *ctx, dl89_rel relation, size_t arity,
-                               const dl89_const *values,
-                               const unsigned char *bound, dl89_scan **out)
+static int ref_store_scan_open(void *ctx, datalog89_rel relation, size_t arity,
+                               const datalog89_const *values,
+                               const unsigned char *bound, datalog89_scan **out)
 {
     ref_store *store;
-    struct dl89_scan *scan;
+    struct datalog89_scan *scan;
     size_t i;
     size_t n;
     size_t k;
@@ -233,10 +233,10 @@ static int ref_store_scan_open(void *ctx, dl89_rel relation, size_t arity,
     return 0;
 }
 
-static int ref_store_scan_next(void *ctx, dl89_scan *scan_ptr,
-                               dl89_const *tuple, int *found)
+static int ref_store_scan_next(void *ctx, datalog89_scan *scan_ptr,
+                               datalog89_const *tuple, int *found)
 {
-    struct dl89_scan *scan;
+    struct datalog89_scan *scan;
     const ref_tuple *entry;
 
     (void)ctx;
@@ -249,16 +249,16 @@ static int ref_store_scan_next(void *ctx, dl89_scan *scan_ptr,
     entry = &scan->store->tuples[scan->indexes[scan->pos]];
     if (entry->arity > 0)
     {
-        memcpy(tuple, entry->tuple, entry->arity * sizeof(dl89_const));
+        memcpy(tuple, entry->tuple, entry->arity * sizeof(datalog89_const));
     }
     scan->pos = scan->pos + 1;
     *found = 1;
     return 0;
 }
 
-static void ref_store_scan_close(void *ctx, dl89_scan *scan_ptr)
+static void ref_store_scan_close(void *ctx, datalog89_scan *scan_ptr)
 {
-    struct dl89_scan *scan;
+    struct datalog89_scan *scan;
 
     (void)ctx;
     scan = scan_ptr;
@@ -267,7 +267,7 @@ static void ref_store_scan_close(void *ctx, dl89_scan *scan_ptr)
     free(scan);
 }
 
-static const dl89_store_ops ref_store_ops = {
+static const datalog89_store_ops ref_store_ops = {
     ref_store_insert, ref_store_scan_open, ref_store_scan_next,
     ref_store_scan_close};
 
@@ -318,17 +318,17 @@ void ref_store_set_seed(ref_store *store, unsigned long seed)
     store->seed = seed;
 }
 
-dl89_store ref_store_dl89(ref_store *store)
+datalog89_store ref_store_datalog89(ref_store *store)
 {
-    dl89_store result;
+    datalog89_store result;
 
     result.ctx = store;
     result.ops = &ref_store_ops;
     return result;
 }
 
-int ref_store_has(const ref_store *store, dl89_rel relation, size_t arity,
-                  const dl89_const *tuple)
+int ref_store_has(const ref_store *store, datalog89_rel relation, size_t arity,
+                  const datalog89_const *tuple)
 {
     size_t i;
 
@@ -342,7 +342,8 @@ int ref_store_has(const ref_store *store, dl89_rel relation, size_t arity,
     return 0;
 }
 
-size_t ref_store_count(const ref_store *store, dl89_rel relation, size_t arity)
+size_t ref_store_count(const ref_store *store, datalog89_rel relation,
+                       size_t arity)
 {
     size_t i;
     size_t n;

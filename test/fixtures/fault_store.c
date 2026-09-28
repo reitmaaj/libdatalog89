@@ -9,17 +9,17 @@
 
 #include "fault_store.h"
 
-struct dl89_scan
+struct datalog89_scan
 {
-    dl89_store inner;
-    dl89_scan *inner_scan;
+    datalog89_store inner;
+    datalog89_scan *inner_scan;
     size_t arity;
     int closed;
 };
 
 struct fault_store
 {
-    dl89_store inner;
+    datalog89_store inner;
     unsigned long open_calls;
     unsigned long next_calls;
     unsigned long insert_calls;
@@ -36,7 +36,8 @@ struct fault_store
 };
 
 static void validate_open(fault_store *fs, size_t arity,
-                          const dl89_const *values, const unsigned char *bound)
+                          const datalog89_const *values,
+                          const unsigned char *bound)
 {
     size_t p;
 
@@ -66,8 +67,8 @@ static void validate_open(fault_store *fs, size_t arity,
     }
 }
 
-static int fault_insert(void *ctx, dl89_rel relation, size_t arity,
-                        const dl89_const *tuple, int *inserted)
+static int fault_insert(void *ctx, datalog89_rel relation, size_t arity,
+                        const datalog89_const *tuple, int *inserted)
 {
     fault_store *fs;
 
@@ -92,12 +93,12 @@ static int fault_insert(void *ctx, dl89_rel relation, size_t arity,
                                  inserted);
 }
 
-static int fault_scan_open(void *ctx, dl89_rel relation, size_t arity,
-                           const dl89_const *values, const unsigned char *bound,
-                           dl89_scan **out)
+static int fault_scan_open(void *ctx, datalog89_rel relation, size_t arity,
+                           const datalog89_const *values,
+                           const unsigned char *bound, datalog89_scan **out)
 {
     fault_store *fs;
-    struct dl89_scan *scan;
+    struct datalog89_scan *scan;
     int rc;
 
     fs = ctx;
@@ -139,11 +140,11 @@ static int fault_scan_open(void *ctx, dl89_rel relation, size_t arity,
     return 0;
 }
 
-static int fault_scan_next(void *ctx, dl89_scan *scan_ptr, dl89_const *tuple,
-                           int *found)
+static int fault_scan_next(void *ctx, datalog89_scan *scan_ptr,
+                           datalog89_const *tuple, int *found)
 {
     fault_store *fs;
-    struct dl89_scan *scan;
+    struct datalog89_scan *scan;
 
     fs = ctx;
     scan = scan_ptr;
@@ -169,10 +170,10 @@ static int fault_scan_next(void *ctx, dl89_scan *scan_ptr, dl89_const *tuple,
                                       found);
 }
 
-static void fault_scan_close(void *ctx, dl89_scan *scan_ptr)
+static void fault_scan_close(void *ctx, datalog89_scan *scan_ptr)
 {
     fault_store *fs;
-    struct dl89_scan *scan;
+    struct datalog89_scan *scan;
 
     fs = ctx;
     scan = scan_ptr;
@@ -188,7 +189,7 @@ static void fault_scan_close(void *ctx, dl89_scan *scan_ptr)
     free(scan);
 }
 
-static const dl89_store_ops fault_store_ops = {
+static const datalog89_store_ops fault_store_ops = {
     fault_insert, fault_scan_open, fault_scan_next, fault_scan_close};
 
 fault_store *fault_store_new(ref_store *inner)
@@ -200,7 +201,7 @@ fault_store *fault_store_new(ref_store *inner)
     {
         return NULL;
     }
-    fs->inner = ref_store_dl89(inner);
+    fs->inner = ref_store_datalog89(inner);
     fs->open_calls = 0;
     fs->next_calls = 0;
     fs->insert_calls = 0;
@@ -222,9 +223,9 @@ void fault_store_free(fault_store *fs)
     free(fs);
 }
 
-dl89_store fault_store_dl89(fault_store *fs)
+datalog89_store fault_store_datalog89(fault_store *fs)
 {
-    dl89_store result;
+    datalog89_store result;
 
     result.ctx = fs;
     result.ops = &fault_store_ops;

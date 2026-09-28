@@ -1,4 +1,4 @@
-# libdl89 stakeholders
+# libdatalog89 stakeholders
 
 ## STORY-1 embedder derives closure facts
 

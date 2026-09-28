@@ -1,8 +1,8 @@
-# libdl89
+# libdatalog89
 
 A small embeddable Datalog evaluation core in strict ISO C89.
 
-`libdl89` accepts facts and rules over caller-assigned opaque identifiers and
+`libdatalog89` accepts facts and rules over caller-assigned opaque identifiers and
 computes the least fixed point over a caller-supplied relational store:
 
     eval : Program x Database -> least_fixed_point(Program, Database)
@@ -14,14 +14,14 @@ persisted, named, reflected, mutated, and presented.
 
 ## Public API
 
-`include/dl89.h` declares the complete surface in the `dl89_` namespace:
+`include/datalog89.h` declares the complete surface in the `datalog89_` namespace:
 
 ```c
-dl89_eval_create(&config, &eval);
-dl89_eval_add_fact(eval, relation, arity, tuple);
-dl89_eval_add_rule(eval, &rule);
-dl89_eval_run(eval);
-dl89_eval_destroy(eval);
+datalog89_eval_create(&config, &eval);
+datalog89_eval_add_fact(eval, relation, arity, tuple);
+datalog89_eval_add_rule(eval, &rule);
+datalog89_eval_run(eval);
+datalog89_eval_destroy(eval);
 ```
 
 The relational store is the only host interface:
@@ -47,17 +47,17 @@ carry exactly one empty tuple.
 - Head variables must be range-restricted by the body; repeated variables
   impose equality constraints.
 - Relation arity is consistent across the whole evaluator instance, covering
-  both rules and `dl89_eval_add_fact`.
-- `dl89_eval_add_rule` deep-copies the caller's rule; caller buffers may be
+  both rules and `datalog89_eval_add_fact`.
+- `datalog89_eval_add_rule` deep-copies the caller's rule; caller buffers may be
   reused or destroyed immediately.
-- `dl89_eval_run` returns `DL89_EBUSY` on reentrant mutation, `DL89_ESTORE`
-  on store failure, and `DL89_ENOMEM` on allocation failure. All scans opened
+- `datalog89_eval_run` returns `DATALOG89_EBUSY` on reentrant mutation, `DATALOG89_ESTORE`
+  on store failure, and `DATALOG89_ENOMEM` on allocation failure. All scans opened
   by the library are closed on every return path.
 
 ## Build and test
 
 ```sh
-just build        # strict C89, archive build/libdl89.a
+just build        # strict C89, archive build/libdatalog89.a
 just headers      # public header compiles standalone (GCC + Clang)
 just smoke        # one end-to-end path first
 just unit         # per-concern unit programs
