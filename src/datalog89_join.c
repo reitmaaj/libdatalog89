@@ -1,22 +1,22 @@
-/* dl89_join.c - body joins, unification, head instantiation, insertion.
+/* datalog89_join.c - body joins, unification, head instantiation, insertion.
  *
  * Body atoms are evaluated left to right with recursive backtracking. One
  * body position may instead iterate a delta (semi-naive rounds); the join is
  * otherwise identical. Written to the green worker/controller discipline. */
 
-#include "dl89_priv.h"
+#include "datalog89_priv.h"
 
-static int eval_body(dl89_eval *eval, dl89_priv_crule *rule, size_t depth,
-                     dl89_priv_delta_table *sink, const dl89_priv_delta *delta,
-                     size_t delta_pos);
+static int eval_body(datalog89_eval *eval, datalog89_priv_crule *rule,
+                     size_t depth, datalog89_priv_delta_table *sink,
+                     const datalog89_priv_delta *delta, size_t delta_pos);
 
 /* --- pure value workers ------------------------------------------------- */
 
 GREEN_PURE
-static dl89_const head_value(const dl89_priv_crule *rule,
-                             const dl89_priv_cterm *term)
+static datalog89_const head_value(const datalog89_priv_crule *rule,
+                                  const datalog89_priv_cterm *term)
 {
-    if (term->kind == DL89_TERM_CONST)
+    if (term->kind == DATALOG89_TERM_CONST)
     {
         return term->constant;
     }
@@ -24,40 +24,41 @@ static dl89_const head_value(const dl89_priv_crule *rule,
 }
 
 GREEN_PURE
-static const dl89_const *delta_tuple_at(const dl89_priv_delta *delta,
-                                        size_t arity, size_t index)
+static const datalog89_const *delta_tuple_at(const datalog89_priv_delta *delta,
+                                             size_t arity, size_t index)
 {
     return delta->tuples + index * arity;
 }
 
 /* --- binding construction ---------------------------------------------- */
 
-static void bind_constant(dl89_priv_crule *rule, dl89_const constant, size_t p)
+static void bind_constant(datalog89_priv_crule *rule, datalog89_const constant,
+                          size_t p)
 {
     rule->values[p] = constant;
     rule->bvalues[p] = 1;
 }
 
-static void bind_bound(dl89_priv_crule *rule, size_t slot, size_t p)
+static void bind_bound(datalog89_priv_crule *rule, size_t slot, size_t p)
 {
     rule->values[p] = rule->env[slot];
     rule->bvalues[p] = 1;
 }
 
-static void bind_free(dl89_priv_crule *rule, size_t p)
+static void bind_free(datalog89_priv_crule *rule, size_t p)
 {
     rule->values[p] = 0;
     rule->bvalues[p] = 0;
 }
 
-static void bind_position(dl89_priv_crule *rule, const dl89_priv_catom *atom,
-                          size_t p)
+static void bind_position(datalog89_priv_crule *rule,
+                          const datalog89_priv_catom *atom, size_t p)
 {
-    const dl89_priv_cterm *term;
+    const datalog89_priv_cterm *term;
     size_t slot;
 
     term = &atom->terms[p];
-    if (term->kind == DL89_TERM_CONST)
+    if (term->kind == DATALOG89_TERM_CONST)
     {
         bind_constant(rule, term->constant, p);
         return;
@@ -71,7 +72,8 @@ static void bind_position(dl89_priv_crule *rule, const dl89_priv_catom *atom,
     bind_free(rule, p);
 }
 
-static void build_bindings(dl89_priv_crule *rule, const dl89_priv_catom *atom)
+static void build_bindings(datalog89_priv_crule *rule,
+                           const datalog89_priv_catom *atom)
 {
     size_t p;
 
@@ -83,12 +85,12 @@ static void build_bindings(dl89_priv_crule *rule, const dl89_priv_catom *atom)
 
 /* --- environment rollback ---------------------------------------------- */
 
-static void unbind_one(dl89_priv_crule *rule, size_t slot)
+static void unbind_one(datalog89_priv_crule *rule, size_t slot)
 {
     rule->bound[slot] = 0;
 }
 
-static void unbind(dl89_priv_crule *rule, size_t *log, size_t count)
+static void unbind(datalog89_priv_crule *rule, size_t *log, size_t count)
 {
     size_t i;
 
@@ -98,7 +100,7 @@ static void unbind(dl89_priv_crule *rule, size_t *log, size_t count)
     }
 }
 
-static void clear_bound(dl89_priv_crule *rule)
+static void clear_bound(datalog89_priv_crule *rule)
 {
     size_t i;
 
@@ -110,12 +112,13 @@ static void clear_bound(dl89_priv_crule *rule)
 
 /* --- unification -------------------------------------------------------- */
 
-static int unify_position(dl89_priv_crule *rule, const dl89_priv_cterm *term,
-                          dl89_const value, size_t *log, size_t *n)
+static int unify_position(datalog89_priv_crule *rule,
+                          const datalog89_priv_cterm *term,
+                          datalog89_const value, size_t *log, size_t *n)
 {
     size_t slot;
 
-    if (term->kind == DL89_TERM_CONST)
+    if (term->kind == DATALOG89_TERM_CONST)
     {
         if (value != term->constant)
         {
@@ -139,8 +142,9 @@ static int unify_position(dl89_priv_crule *rule, const dl89_priv_cterm *term,
     return 1;
 }
 
-static void unify_tuple(dl89_priv_crule *rule, const dl89_priv_catom *atom,
-                        const dl89_const *tuple, size_t *log,
+static void unify_tuple(datalog89_priv_crule *rule,
+                        const datalog89_priv_catom *atom,
+                        const datalog89_const *tuple, size_t *log,
                         size_t *bound_count, int *matched)
 {
     size_t p;
@@ -166,8 +170,8 @@ static void unify_tuple(dl89_priv_crule *rule, const dl89_priv_catom *atom,
 
 /* --- head emission ------------------------------------------------------ */
 
-static int emit_head(dl89_eval *eval, dl89_priv_crule *rule,
-                     dl89_priv_delta_table *sink)
+static int emit_head(datalog89_eval *eval, datalog89_priv_crule *rule,
+                     datalog89_priv_delta_table *sink)
 {
     size_t p;
     int inserted;
@@ -183,25 +187,25 @@ static int emit_head(dl89_eval *eval, dl89_priv_crule *rule,
                                  rule->head.arity, rule->tuple, &inserted);
     if (rc != 0)
     {
-        return DL89_ESTORE;
+        return DATALOG89_ESTORE;
     }
     if (inserted == 0)
     {
-        return DL89_OK;
+        return DATALOG89_OK;
     }
     if (sink == NULL)
     {
-        return DL89_OK;
+        return DATALOG89_OK;
     }
-    st = dl89_priv_delta_record(sink, rule->head.relation, rule->head.arity,
-                                rule->tuple);
+    st = datalog89_priv_delta_record(sink, rule->head.relation,
+                                     rule->head.arity, rule->tuple);
     return st;
 }
 
 /* --- store scan --------------------------------------------------------- */
 
-static int open_scan(dl89_eval *eval, const dl89_priv_crule *rule,
-                     const dl89_priv_catom *atom, dl89_scan **scan)
+static int open_scan(datalog89_eval *eval, const datalog89_priv_crule *rule,
+                     const datalog89_priv_catom *atom, datalog89_scan **scan)
 {
     int rc;
 
@@ -210,19 +214,20 @@ static int open_scan(dl89_eval *eval, const dl89_priv_crule *rule,
                                    rule->values, rule->bvalues, scan);
     if (rc != 0)
     {
-        return DL89_ESTORE;
+        return DATALOG89_ESTORE;
     }
     if (*scan == NULL)
     {
-        return DL89_ESTORE;
+        return DATALOG89_ESTORE;
     }
-    return DL89_OK;
+    return DATALOG89_OK;
 }
 
-static int scan_one(dl89_eval *eval, dl89_priv_crule *rule,
-                    const dl89_priv_catom *atom, size_t depth, dl89_scan *scan,
-                    dl89_priv_delta_table *sink, const dl89_priv_delta *delta,
-                    size_t delta_pos, int *done)
+static int scan_one(datalog89_eval *eval, datalog89_priv_crule *rule,
+                    const datalog89_priv_catom *atom, size_t depth,
+                    datalog89_scan *scan, datalog89_priv_delta_table *sink,
+                    const datalog89_priv_delta *delta, size_t delta_pos,
+                    int *done)
 {
     size_t *log;
     size_t bound_count;
@@ -236,18 +241,18 @@ static int scan_one(dl89_eval *eval, dl89_priv_crule *rule,
     rc = eval->store.ops->scan_next(eval->store.ctx, scan, rule->tuple, &found);
     if (rc != 0)
     {
-        return DL89_ESTORE;
+        return DATALOG89_ESTORE;
     }
     if (found == 0)
     {
         *done = 1;
-        return DL89_OK;
+        return DATALOG89_OK;
     }
     bound_count = 0;
     matched = 0;
     log = rule->bound_log + depth * rule->tuple_cap;
     unify_tuple(rule, atom, rule->tuple, log, &bound_count, &matched);
-    st = DL89_OK;
+    st = DATALOG89_OK;
     if (matched != 0)
     {
         st = eval_body(eval, rule, depth + 1, sink, delta, delta_pos);
@@ -256,19 +261,19 @@ static int scan_one(dl89_eval *eval, dl89_priv_crule *rule,
     return st;
 }
 
-static int scan_atom(dl89_eval *eval, dl89_priv_crule *rule,
-                     const dl89_priv_catom *atom, size_t depth,
-                     dl89_priv_delta_table *sink, const dl89_priv_delta *delta,
-                     size_t delta_pos)
+static int scan_atom(datalog89_eval *eval, datalog89_priv_crule *rule,
+                     const datalog89_priv_catom *atom, size_t depth,
+                     datalog89_priv_delta_table *sink,
+                     const datalog89_priv_delta *delta, size_t delta_pos)
 {
-    dl89_scan *scan;
+    datalog89_scan *scan;
     int done;
     int st;
 
     build_bindings(rule, atom);
     scan = NULL;
     st = open_scan(eval, rule, atom, &scan);
-    if (st != DL89_OK)
+    if (st != DATALOG89_OK)
     {
         return st;
     }
@@ -277,7 +282,7 @@ static int scan_atom(dl89_eval *eval, dl89_priv_crule *rule,
     {
         st = scan_one(eval, rule, atom, depth, scan, sink, delta, delta_pos,
                       &done);
-        if (st != DL89_OK)
+        if (st != DATALOG89_OK)
         {
             break;
         }
@@ -288,10 +293,11 @@ static int scan_atom(dl89_eval *eval, dl89_priv_crule *rule,
 
 /* --- delta iteration ---------------------------------------------------- */
 
-static int delta_step(dl89_eval *eval, dl89_priv_crule *rule,
-                      const dl89_priv_catom *atom, size_t depth,
-                      dl89_priv_delta_table *sink, const dl89_priv_delta *delta,
-                      size_t delta_pos, const dl89_const *tuple)
+static int delta_step(datalog89_eval *eval, datalog89_priv_crule *rule,
+                      const datalog89_priv_catom *atom, size_t depth,
+                      datalog89_priv_delta_table *sink,
+                      const datalog89_priv_delta *delta, size_t delta_pos,
+                      const datalog89_const *tuple)
 {
     size_t *log;
     size_t bound_count;
@@ -302,7 +308,7 @@ static int delta_step(dl89_eval *eval, dl89_priv_crule *rule,
     matched = 0;
     log = rule->bound_log + depth * rule->tuple_cap;
     unify_tuple(rule, atom, tuple, log, &bound_count, &matched);
-    st = DL89_OK;
+    st = DATALOG89_OK;
     if (matched != 0)
     {
         st = eval_body(eval, rule, depth + 1, sink, delta, delta_pos);
@@ -311,10 +317,10 @@ static int delta_step(dl89_eval *eval, dl89_priv_crule *rule,
     return st;
 }
 
-static int delta_atom(dl89_eval *eval, dl89_priv_crule *rule,
-                      const dl89_priv_catom *atom, size_t depth,
-                      dl89_priv_delta_table *sink, const dl89_priv_delta *delta,
-                      size_t delta_pos)
+static int delta_atom(datalog89_eval *eval, datalog89_priv_crule *rule,
+                      const datalog89_priv_catom *atom, size_t depth,
+                      datalog89_priv_delta_table *sink,
+                      const datalog89_priv_delta *delta, size_t delta_pos)
 {
     size_t i;
     int st;
@@ -323,21 +329,21 @@ static int delta_atom(dl89_eval *eval, dl89_priv_crule *rule,
     {
         st = delta_step(eval, rule, atom, depth, sink, delta, delta_pos,
                         delta_tuple_at(delta, atom->arity, i));
-        if (st != DL89_OK)
+        if (st != DATALOG89_OK)
         {
             return st;
         }
     }
-    return DL89_OK;
+    return DATALOG89_OK;
 }
 
 /* --- body recursion ----------------------------------------------------- */
 
-static int eval_body(dl89_eval *eval, dl89_priv_crule *rule, size_t depth,
-                     dl89_priv_delta_table *sink, const dl89_priv_delta *delta,
-                     size_t delta_pos)
+static int eval_body(datalog89_eval *eval, datalog89_priv_crule *rule,
+                     size_t depth, datalog89_priv_delta_table *sink,
+                     const datalog89_priv_delta *delta, size_t delta_pos)
 {
-    const dl89_priv_catom *atom;
+    const datalog89_priv_catom *atom;
     int st;
 
     if (depth == rule->body_count)
@@ -357,9 +363,10 @@ static int eval_body(dl89_eval *eval, dl89_priv_crule *rule, size_t depth,
     st = scan_atom(eval, rule, atom, depth, sink, delta, delta_pos);
     return st;
 }
-int dl89_priv_join_rule(dl89_eval *eval, dl89_priv_crule *rule,
-                        dl89_priv_delta_table *sink,
-                        const dl89_priv_delta *delta, size_t delta_pos)
+int datalog89_priv_join_rule(datalog89_eval *eval, datalog89_priv_crule *rule,
+                             datalog89_priv_delta_table *sink,
+                             const datalog89_priv_delta *delta,
+                             size_t delta_pos)
 {
     int st;
 

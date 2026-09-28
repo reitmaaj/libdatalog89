@@ -28,21 +28,21 @@ done
 set --
 for f in src/*.c; do
     name=$(basename "$f" .c)
-    if [ "$name" = "dl89_priv_mem" ]; then
+    if [ "$name" = "datalog89_priv_mem" ]; then
         continue
     fi
     set -- "$@" "build-san/$name.o"
 done
-rm -f build-san/libdl89-fault.a
-ar rcs build-san/libdl89-fault.a "$@"
+rm -f build-san/libdatalog89-fault.a
+ar rcs build-san/libdatalog89-fault.a "$@"
 
 set --
 for f in src/*.c; do
     name=$(basename "$f" .c)
     set -- "$@" "build-san/$name.o"
 done
-rm -f build-san/libdl89.a
-ar rcs build-san/libdl89.a "$@"
+rm -f build-san/libdatalog89.a
+ar rcs build-san/libdatalog89.a "$@"
 
 for f in test/fixtures/*.c; do
     name=$(basename "$f" .c)
@@ -57,47 +57,47 @@ for f in test/fixtures/*.c; do
     fi
     set -- "$@" "build-san/fix_$name.o"
 done
-rm -f build-san/libdl89-fixtures.a build-san/libdl89-faultmem.a
-ar rcs build-san/libdl89-fixtures.a "$@"
-ar rcs build-san/libdl89-faultmem.a build-san/fix_fault_mem.o
+rm -f build-san/libdatalog89-fixtures.a build-san/libdatalog89-faultmem.a
+ar rcs build-san/libdatalog89-fixtures.a "$@"
+ar rcs build-san/libdatalog89-faultmem.a build-san/fix_fault_mem.o
 
 ASAN_OPTIONS=detect_leaks=1
 export ASAN_OPTIONS
 
 compile -Wno-unused-function -o build-san/smoke test/smoke.c \
-    build-san/libdl89-fixtures.a build-san/libdl89.a
+    build-san/libdatalog89-fixtures.a build-san/libdatalog89.a
 "./build-san/smoke"
 
 for t in test/unit/test_*.c; do
     name=$(basename "$t" .c)
     if [ "$name" = "test_allocfail" ]; then
         compile -Wno-unused-function -o "build-san/$name" "$t" \
-            build-san/libdl89-fault.a build-san/libdl89-faultmem.a \
-            build-san/libdl89-fixtures.a
+            build-san/libdatalog89-fault.a build-san/libdatalog89-faultmem.a \
+            build-san/libdatalog89-fixtures.a
     else
         compile -Wno-unused-function -o "build-san/$name" "$t" \
-            build-san/libdl89-fixtures.a build-san/libdl89.a
+            build-san/libdatalog89-fixtures.a build-san/libdatalog89.a
     fi
     "./build-san/$name"
 done
 
 compile -Wno-unused-function -o build-san/test_diff \
     test/differential/test_diff.c test/differential/gen.c \
-    build-san/libdl89-fixtures.a build-san/libdl89.a
-DL89_DIFF_N=1000 "./build-san/test_diff"
+    build-san/libdatalog89-fixtures.a build-san/libdatalog89.a
+DATALOG89_DIFF_N=1000 "./build-san/test_diff"
 
 compile -Wno-unused-function -o build-san/test_invalid \
-    test/differential/test_invalid.c build-san/libdl89-fixtures.a \
-    build-san/libdl89.a
-DL89_DIFF_N=1000 "./build-san/test_invalid"
+    test/differential/test_invalid.c build-san/libdatalog89-fixtures.a \
+    build-san/libdatalog89.a
+DATALOG89_DIFF_N=1000 "./build-san/test_invalid"
 
 compile -Wno-unused-function -o build-san/test_order \
     test/differential/test_order.c test/differential/gen.c \
-    build-san/libdl89-fixtures.a build-san/libdl89.a
-DL89_DIFF_N=1000 "./build-san/test_order"
+    build-san/libdatalog89-fixtures.a build-san/libdatalog89.a
+DATALOG89_DIFF_N=1000 "./build-san/test_order"
 
 compile -Wno-unused-function -o build-san/test_stress test/stress/test_stress.c \
-    build-san/libdl89-fixtures.a build-san/libdl89.a
-DL89_STRESS_N=200 "./build-san/test_stress"
+    build-san/libdatalog89-fixtures.a build-san/libdatalog89.a
+DATALOG89_STRESS_N=200 "./build-san/test_stress"
 
 echo "sanitize: OK"

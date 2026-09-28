@@ -1,21 +1,22 @@
 /* test_invalid.c - generated malformed rules must be rejected atomically.
- * DL89_DIFF_N selects the number of cases (default 1000). */
+ * DATALOG89_DIFF_N selects the number of cases (default 1000). */
 
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <dl89.h>
+#include <datalog89.h>
 
 #include "build.h"
 #include "ref_store.h"
 #include "symbols.h"
 
-static void seed1(dl89_eval *eval, dl89_rel relation, dl89_const value)
+static void seed1(datalog89_eval *eval, datalog89_rel relation,
+                  datalog89_const value)
 {
-    dl89_const tuple[1];
+    datalog89_const tuple[1];
 
     tuple[0] = value;
-    if (dl89_eval_add_fact(eval, relation, 1, tuple) != DL89_OK)
+    if (datalog89_eval_add_fact(eval, relation, 1, tuple) != DATALOG89_OK)
     {
         fprintf(stderr, "seed1 failed\n");
     }
@@ -24,22 +25,22 @@ static void seed1(dl89_eval *eval, dl89_rel relation, dl89_const value)
 static void run_case(unsigned long seed, int *failed)
 {
     ref_store *store;
-    dl89_eval_config config;
-    dl89_eval *eval;
-    dl89_term head_terms[2];
-    dl89_term body_terms[1];
-    dl89_atom head;
-    dl89_atom body[1];
-    dl89_rule rule;
-    dl89_const a[1];
-    dl89_rel fresh;
+    datalog89_eval_config config;
+    datalog89_eval *eval;
+    datalog89_term head_terms[2];
+    datalog89_term body_terms[1];
+    datalog89_atom head;
+    datalog89_atom body[1];
+    datalog89_rule rule;
+    datalog89_const a[1];
+    datalog89_rel fresh;
     int mode;
     int st;
 
     store = ref_store_new();
-    config.store = ref_store_dl89(store);
+    config.store = ref_store_datalog89(store);
     eval = NULL;
-    if (dl89_eval_create(&config, &eval) != DL89_OK)
+    if (datalog89_eval_create(&config, &eval) != DATALOG89_OK)
     {
         *failed = 1;
         ref_store_free(store);
@@ -50,13 +51,13 @@ static void run_case(unsigned long seed, int *failed)
     mk_atom(&head, R_P, 1, head_terms);
     mk_atom(&body[0], R_Q, 1, body_terms);
     mk_rule(&rule, &head, 1, body);
-    if (dl89_eval_add_rule(eval, &rule) != DL89_OK)
+    if (datalog89_eval_add_rule(eval, &rule) != DATALOG89_OK)
     {
         *failed = 1;
     }
     seed1(eval, R_Q, C_A);
 
-    fresh = (dl89_rel)(1000 + seed);
+    fresh = (datalog89_rel)(1000 + seed);
     mode = (int)(seed % 4);
     if (mode == 0)
     {
@@ -67,7 +68,7 @@ static void run_case(unsigned long seed, int *failed)
     }
     if (mode == 1)
     {
-        mk_var(&head_terms[0], (dl89_var)99);
+        mk_var(&head_terms[0], (datalog89_var)99);
         mk_atom(&head, fresh, 1, head_terms);
         mk_atom(&body[0], R_Q, 1, body_terms);
         mk_rule(&rule, &head, 1, body);
@@ -86,14 +87,14 @@ static void run_case(unsigned long seed, int *failed)
         mk_atom(&head, fresh, 1, head_terms);
         mk_rule(&rule, &head, 0, NULL);
     }
-    st = dl89_eval_add_rule(eval, &rule);
-    if (st != DL89_EPROGRAM)
+    st = datalog89_eval_add_rule(eval, &rule);
+    if (st != DATALOG89_EPROGRAM)
     {
         fprintf(stderr, "seed %lu mode %d: add_rule => %d (expected %d)\n",
-                seed, mode, st, DL89_EPROGRAM);
+                seed, mode, st, DATALOG89_EPROGRAM);
         *failed = 1;
     }
-    if (dl89_eval_run(eval) != DL89_OK)
+    if (datalog89_eval_run(eval) != DATALOG89_OK)
     {
         fprintf(stderr, "seed %lu: run failed\n", seed);
         *failed = 1;
@@ -114,7 +115,7 @@ static void run_case(unsigned long seed, int *failed)
         fprintf(stderr, "seed %lu: rejected rule had consequences\n", seed);
         *failed = 1;
     }
-    dl89_eval_destroy(eval);
+    datalog89_eval_destroy(eval);
     ref_store_free(store);
 }
 
@@ -125,7 +126,7 @@ int main(void)
     unsigned long seed;
     int failed;
 
-    env = getenv("DL89_DIFF_N");
+    env = getenv("DATALOG89_DIFF_N");
     total = 1000;
     if (env != NULL)
     {

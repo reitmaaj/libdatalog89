@@ -1,6 +1,6 @@
 /* test_store.c - store abstraction, enumeration order, binding patterns. */
 
-#include <dl89.h>
+#include <datalog89.h>
 
 #include <test.h>
 
@@ -11,29 +11,29 @@
 #include "ref_store.h"
 #include "symbols.h"
 
-int dl89_test_failures = 0;
+int datalog89_test_failures = 0;
 
-static void seed2(dl89_eval *eval, dl89_rel relation, dl89_const a,
-                  dl89_const b)
+static void seed2(datalog89_eval *eval, datalog89_rel relation,
+                  datalog89_const a, datalog89_const b)
 {
-    dl89_const tuple[2];
+    datalog89_const tuple[2];
 
     tuple[0] = a;
     tuple[1] = b;
-    T_STATUS(dl89_eval_add_fact(eval, relation, 2, tuple), DL89_OK);
+    T_STATUS(datalog89_eval_add_fact(eval, relation, 2, tuple), DATALOG89_OK);
 }
 
-static void add_tc(dl89_eval *eval)
+static void add_tc(datalog89_eval *eval)
 {
-    dl89_term base_head[2];
-    dl89_term base_body[2];
-    dl89_term rec_head[2];
-    dl89_term rec_body[4];
-    dl89_atom base_head_atom;
-    dl89_atom base_body_atom;
-    dl89_atom rec_head_atom;
-    dl89_atom rec_body_atoms[2];
-    dl89_rule rules[2];
+    datalog89_term base_head[2];
+    datalog89_term base_body[2];
+    datalog89_term rec_head[2];
+    datalog89_term rec_body[4];
+    datalog89_atom base_head_atom;
+    datalog89_atom base_body_atom;
+    datalog89_atom rec_head_atom;
+    datalog89_atom rec_body_atoms[2];
+    datalog89_rule rules[2];
 
     mk_var(&base_head[0], V_X);
     mk_var(&base_head[1], V_Y);
@@ -54,17 +54,17 @@ static void add_tc(dl89_eval *eval)
     mk_atom(&rec_body_atoms[1], R_EDGE, 2, &rec_body[2]);
     mk_rule(&rules[1], &rec_head_atom, 2, rec_body_atoms);
 
-    T_STATUS(dl89_eval_add_rule(eval, &rules[0]), DL89_OK);
-    T_STATUS(dl89_eval_add_rule(eval, &rules[1]), DL89_OK);
+    T_STATUS(datalog89_eval_add_rule(eval, &rules[0]), DATALOG89_OK);
+    T_STATUS(datalog89_eval_add_rule(eval, &rules[1]), DATALOG89_OK);
 }
 
-static void add_same_rule(dl89_eval *eval)
+static void add_same_rule(datalog89_eval *eval)
 {
-    dl89_term head_terms[1];
-    dl89_term body_terms[2];
-    dl89_atom head;
-    dl89_atom body[1];
-    dl89_rule rule;
+    datalog89_term head_terms[1];
+    datalog89_term body_terms[2];
+    datalog89_atom head;
+    datalog89_atom body[1];
+    datalog89_rule rule;
 
     mk_var(&head_terms[0], V_X);
     mk_var(&body_terms[0], V_X);
@@ -72,16 +72,16 @@ static void add_same_rule(dl89_eval *eval)
     mk_atom(&head, R_SAME, 1, head_terms);
     mk_atom(&body[0], R_EDGE, 2, body_terms);
     mk_rule(&rule, &head, 1, body);
-    T_STATUS(dl89_eval_add_rule(eval, &rule), DL89_OK);
+    T_STATUS(datalog89_eval_add_rule(eval, &rule), DATALOG89_OK);
 }
 
-static void add_const_head_rule(dl89_eval *eval)
+static void add_const_head_rule(datalog89_eval *eval)
 {
-    dl89_term head_terms[1];
-    dl89_term body_terms[2];
-    dl89_atom head;
-    dl89_atom body[1];
-    dl89_rule rule;
+    datalog89_term head_terms[1];
+    datalog89_term body_terms[2];
+    datalog89_atom head;
+    datalog89_atom body[1];
+    datalog89_rule rule;
 
     mk_const(&head_terms[0], C_A);
     mk_var(&body_terms[0], V_X);
@@ -89,10 +89,10 @@ static void add_const_head_rule(dl89_eval *eval)
     mk_atom(&head, R_FLAG, 1, head_terms);
     mk_atom(&body[0], R_EDGE, 2, body_terms);
     mk_rule(&rule, &head, 1, body);
-    T_STATUS(dl89_eval_add_rule(eval, &rule), DL89_OK);
+    T_STATUS(datalog89_eval_add_rule(eval, &rule), DATALOG89_OK);
 }
 
-static void seed_program(dl89_eval *eval)
+static void seed_program(datalog89_eval *eval)
 {
     seed2(eval, R_EDGE, C_A, C_B);
     seed2(eval, R_EDGE, C_B, C_C);
@@ -100,13 +100,14 @@ static void seed_program(dl89_eval *eval)
     seed2(eval, R_EDGE, C_E, C_E);
 }
 
-static int scan_all(const dl89_store *store, dl89_rel relation, size_t arity,
-                    dl89_const *tuples, size_t max, size_t *out_count)
+static int scan_all(const datalog89_store *store, datalog89_rel relation,
+                    size_t arity, datalog89_const *tuples, size_t max,
+                    size_t *out_count)
 {
-    dl89_scan *scan;
+    datalog89_scan *scan;
     unsigned char bound[8];
-    dl89_const values[8];
-    dl89_const tuple[8];
+    datalog89_const values[8];
+    datalog89_const tuple[8];
     size_t count;
     size_t p;
     int found;
@@ -152,15 +153,15 @@ static int scan_all(const dl89_store *store, dl89_rel relation, size_t arity,
     return 1;
 }
 
-static int relation_matches(const dl89_store *a, const dl89_store *b,
-                            dl89_rel relation, size_t arity)
+static int relation_matches(const datalog89_store *a, const datalog89_store *b,
+                            datalog89_rel relation, size_t arity)
 {
-    dl89_const tuples[256 * 8];
+    datalog89_const tuples[256 * 8];
     size_t count_a;
     size_t count_b;
     size_t i;
     size_t p;
-    dl89_const tuple[8];
+    datalog89_const tuple[8];
     const hash_store *hb;
 
     hb = b->ctx;
@@ -191,35 +192,35 @@ static void test_alternate_store(void)
 {
     ref_store *rs;
     hash_store *hs;
-    dl89_store rstore;
-    dl89_store hstore;
-    dl89_eval_config config;
-    dl89_eval *eval;
-    dl89_const a[1];
+    datalog89_store rstore;
+    datalog89_store hstore;
+    datalog89_eval_config config;
+    datalog89_eval *eval;
+    datalog89_const a[1];
 
     rs = ref_store_new();
     hs = hash_store_new();
-    rstore = ref_store_dl89(rs);
-    hstore = hash_store_dl89(hs);
+    rstore = ref_store_datalog89(rs);
+    hstore = hash_store_datalog89(hs);
     config.store = rstore;
     eval = NULL;
-    T_STATUS(dl89_eval_create(&config, &eval), DL89_OK);
+    T_STATUS(datalog89_eval_create(&config, &eval), DATALOG89_OK);
     add_tc(eval);
     add_same_rule(eval);
     add_const_head_rule(eval);
     seed_program(eval);
-    T_STATUS(dl89_eval_run(eval), DL89_OK);
-    dl89_eval_destroy(eval);
+    T_STATUS(datalog89_eval_run(eval), DATALOG89_OK);
+    datalog89_eval_destroy(eval);
 
     config.store = hstore;
     eval = NULL;
-    T_STATUS(dl89_eval_create(&config, &eval), DL89_OK);
+    T_STATUS(datalog89_eval_create(&config, &eval), DATALOG89_OK);
     add_tc(eval);
     add_same_rule(eval);
     add_const_head_rule(eval);
     seed_program(eval);
-    T_STATUS(dl89_eval_run(eval), DL89_OK);
-    dl89_eval_destroy(eval);
+    T_STATUS(datalog89_eval_run(eval), DATALOG89_OK);
+    datalog89_eval_destroy(eval);
 
     T_ASSERT(relation_matches(&rstore, &hstore, R_PATH, 2) == 1);
     T_ASSERT(relation_matches(&rstore, &hstore, R_SAME, 1) == 1);
@@ -235,20 +236,20 @@ static void test_alternate_store(void)
 
 static void run_order_program(ref_store *store, int order, unsigned long seed)
 {
-    dl89_eval_config config;
-    dl89_eval *eval;
+    datalog89_eval_config config;
+    datalog89_eval *eval;
 
-    config.store = ref_store_dl89(store);
+    config.store = ref_store_datalog89(store);
     eval = NULL;
-    T_STATUS(dl89_eval_create(&config, &eval), DL89_OK);
+    T_STATUS(datalog89_eval_create(&config, &eval), DATALOG89_OK);
     add_tc(eval);
     add_same_rule(eval);
     add_const_head_rule(eval);
     seed_program(eval);
     ref_store_set_order(store, order);
     ref_store_set_seed(store, seed);
-    T_STATUS(dl89_eval_run(eval), DL89_OK);
-    dl89_eval_destroy(eval);
+    T_STATUS(datalog89_eval_run(eval), DATALOG89_OK);
+    datalog89_eval_destroy(eval);
 }
 
 static void test_enumeration_order(void)
@@ -286,39 +287,39 @@ static void test_enumeration_order(void)
     ref_store_free(random);
 }
 
-static void seed_rel3(dl89_eval *eval)
+static void seed_rel3(datalog89_eval *eval)
 {
-    dl89_const tuple[3];
+    datalog89_const tuple[3];
 
     tuple[0] = C_A;
     tuple[1] = C_B;
     tuple[2] = C_C;
-    T_STATUS(dl89_eval_add_fact(eval, R_JOINED, 3, tuple), DL89_OK);
+    T_STATUS(datalog89_eval_add_fact(eval, R_JOINED, 3, tuple), DATALOG89_OK);
     tuple[0] = C_A;
     tuple[1] = C_B;
     tuple[2] = C_D;
-    T_STATUS(dl89_eval_add_fact(eval, R_JOINED, 3, tuple), DL89_OK);
+    T_STATUS(datalog89_eval_add_fact(eval, R_JOINED, 3, tuple), DATALOG89_OK);
     tuple[0] = C_A;
     tuple[1] = C_E;
     tuple[2] = C_C;
-    T_STATUS(dl89_eval_add_fact(eval, R_JOINED, 3, tuple), DL89_OK);
+    T_STATUS(datalog89_eval_add_fact(eval, R_JOINED, 3, tuple), DATALOG89_OK);
     tuple[0] = C_D;
     tuple[1] = C_B;
     tuple[2] = C_C;
-    T_STATUS(dl89_eval_add_fact(eval, R_JOINED, 3, tuple), DL89_OK);
+    T_STATUS(datalog89_eval_add_fact(eval, R_JOINED, 3, tuple), DATALOG89_OK);
     tuple[0] = C_A;
     tuple[1] = C_B;
     tuple[2] = C_E;
-    T_STATUS(dl89_eval_add_fact(eval, R_JOINED, 3, tuple), DL89_OK);
+    T_STATUS(datalog89_eval_add_fact(eval, R_JOINED, 3, tuple), DATALOG89_OK);
     tuple[0] = C_D;
     tuple[1] = C_E;
     tuple[2] = C_D;
-    T_STATUS(dl89_eval_add_fact(eval, R_JOINED, 3, tuple), DL89_OK);
+    T_STATUS(datalog89_eval_add_fact(eval, R_JOINED, 3, tuple), DATALOG89_OK);
 }
 
-static void build_pattern_rule(dl89_rule *rule, dl89_term *head_terms,
-                               dl89_term *body_terms, dl89_atom *head,
-                               dl89_atom *body, int pattern)
+static void build_pattern_rule(datalog89_rule *rule, datalog89_term *head_terms,
+                               datalog89_term *body_terms, datalog89_atom *head,
+                               datalog89_atom *body, int pattern)
 {
     int p;
 
@@ -345,8 +346,8 @@ static void build_pattern_rule(dl89_rule *rule, dl89_term *head_terms,
         }
         else
         {
-            mk_var(&body_terms[p], (dl89_var)(p + 1));
-            mk_var(&head_terms[p], (dl89_var)(p + 1));
+            mk_var(&body_terms[p], (datalog89_var)(p + 1));
+            mk_var(&head_terms[p], (datalog89_var)(p + 1));
         }
     }
     mk_atom(head, R_R, 3, head_terms);
@@ -363,29 +364,29 @@ static void test_binding_patterns(void)
     {
         ref_store *rs;
         fault_store *fs;
-        dl89_eval_config config;
-        dl89_eval *eval;
-        dl89_term head_terms[3];
-        dl89_term body_terms[3];
-        dl89_atom head;
-        dl89_atom body[1];
-        dl89_rule rule;
+        datalog89_eval_config config;
+        datalog89_eval *eval;
+        datalog89_term head_terms[3];
+        datalog89_term body_terms[3];
+        datalog89_atom head;
+        datalog89_atom body[1];
+        datalog89_rule rule;
 
         rs = ref_store_new();
         fs = fault_store_new(rs);
         fault_store_set_validating(fs, 1);
-        config.store = fault_store_dl89(fs);
+        config.store = fault_store_datalog89(fs);
         eval = NULL;
-        T_STATUS(dl89_eval_create(&config, &eval), DL89_OK);
+        T_STATUS(datalog89_eval_create(&config, &eval), DATALOG89_OK);
         build_pattern_rule(&rule, head_terms, body_terms, &head, body, pattern);
-        T_STATUS(dl89_eval_add_rule(eval, &rule), DL89_OK);
+        T_STATUS(datalog89_eval_add_rule(eval, &rule), DATALOG89_OK);
         seed_rel3(eval);
-        T_STATUS(dl89_eval_run(eval), DL89_OK);
+        T_STATUS(datalog89_eval_run(eval), DATALOG89_OK);
         expect_count(rs, R_R, 3, expected[pattern]);
         T_EQ_SIZE(fault_store_arg_errors(fs), 0);
         T_EQ_SIZE(fault_store_live_scans(fs), 0);
         T_EQ_SIZE(fault_store_total_opens(fs), fault_store_total_closes(fs));
-        dl89_eval_destroy(eval);
+        datalog89_eval_destroy(eval);
         fault_store_free(fs);
         ref_store_free(rs);
     }
@@ -396,7 +397,7 @@ int main(void)
     test_alternate_store();
     test_enumeration_order();
     test_binding_patterns();
-    if (dl89_test_failures == 0)
+    if (datalog89_test_failures == 0)
     {
         return 0;
     }

@@ -1,4 +1,4 @@
-# libdl89 testing scenarios (core)
+# libdatalog89 testing scenarios (core)
 
 All scenarios use the common symbolic fixture: constants A=101 B=102 C=103
 D=104 E=105; relations PARENT=1 ANCESTOR=2 EDGE=3 PATH=4 SAME=5 LEFT=6
@@ -9,14 +9,14 @@ tests repeat with 0 and ULONG_MAX identifiers.
 
 SCENARIO A-1 valid create and destroy
     GIVEN a store with all required callbacks
-    WHEN dl89_eval_create is called and then dl89_eval_destroy
-    THEN create returns DL89_OK with a non-NULL evaluator and destroy
+    WHEN datalog89_eval_create is called and then datalog89_eval_destroy
+    THEN create returns DATALOG89_OK with a non-NULL evaluator and destroy
          releases all evaluator-owned memory
 
 SCENARIO A-2 invalid construction inputs
     GIVEN NULL config, NULL out, or a store missing any required callback
-    WHEN dl89_eval_create is called
-    THEN it returns DL89_EINVAL and sets *out to NULL
+    WHEN datalog89_eval_create is called
+    THEN it returns DATALOG89_EINVAL and sets *out to NULL
 
 SCENARIO O-1 deep copy of rules
     GIVEN a stack rule p(X) :- q(X) and seed fact q(A)
@@ -38,12 +38,12 @@ SCENARIO O-3 destroy releases copied program
 SCENARIO V-1 invalid term kinds
     GIVEN a head or any body term with an unknown kind
     WHEN the rule is added
-    THEN DL89_EPROGRAM is returned and no rule is installed
+    THEN DATALOG89_EPROGRAM is returned and no rule is installed
 
 SCENARIO V-2 unsafe head variables
     GIVEN p(X) :- q(Y), or p(X,Y) :- q(X)
     WHEN the rule is added
-    THEN DL89_EPROGRAM is returned
+    THEN DATALOG89_EPROGRAM is returned
 
 SCENARIO V-3 variable-free rule
     GIVEN p(A) :- q(B)
@@ -53,7 +53,7 @@ SCENARIO V-3 variable-free rule
 SCENARIO V-4 ground fact and nonground fact
     GIVEN zero-body p(A) or zero-body p(X)
     WHEN each is added
-    THEN p(A) is accepted and p(X) returns DL89_EPROGRAM
+    THEN p(A) is accepted and p(X) returns DATALOG89_EPROGRAM
 
 SCENARIO V-5 repeated variable
     GIVEN same(X) :- edge(X,X)
@@ -64,12 +64,12 @@ SCENARIO V-6 arity conflicts
     GIVEN a rule containing p/1 and p/2, or a program with p/1 then p/2, or
           add_fact p/2 after p/1 (and the reverse)
     WHEN the conflicting input is added
-    THEN DL89_EPROGRAM is returned and previously accepted state is unchanged
+    THEN DATALOG89_EPROGRAM is returned and previously accepted state is unchanged
 
 SCENARIO V-7 zero and maximum identifiers
     GIVEN rules, facts, and variables using 0 and ULONG_MAX
     WHEN added and run
-    THEN DL89_OK and ordinary semantics, with no sentinel behavior
+    THEN DATALOG89_OK and ordinary semantics, with no sentinel behavior
 
 ## Facts
 
@@ -167,7 +167,7 @@ SCENARIO R-5 order independence
 SCENARIO P-1 idempotent second run
     GIVEN a program at closure
     WHEN run is called again
-    THEN DL89_OK and the database is exactly unchanged
+    THEN DATALOG89_OK and the database is exactly unchanged
 
 SCENARIO P-2 new fact or rule after closure
     GIVEN a program at closure, then a new extensional fact or a new rule

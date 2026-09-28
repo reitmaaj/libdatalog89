@@ -31,25 +31,26 @@ static size_t gen_below(unsigned long *state, size_t limit)
     return (size_t)(gen_rand(state) % (unsigned long)limit);
 }
 
-static dl89_term *gen_next_term(gen_rule *rule)
+static datalog89_term *gen_next_term(gen_rule *rule)
 {
-    dl89_term *term;
+    datalog89_term *term;
 
     term = &rule->terms[rule->term_count];
     rule->term_count = rule->term_count + 1;
     return term;
 }
 
-static void gen_set_var(dl89_term *term, size_t var_count, unsigned long *state)
+static void gen_set_var(datalog89_term *term, size_t var_count,
+                        unsigned long *state)
 {
-    term->kind = DL89_TERM_VAR;
-    term->u.variable = (dl89_var)(1 + gen_below(state, var_count));
+    term->kind = DATALOG89_TERM_VAR;
+    term->u.variable = (datalog89_var)(1 + gen_below(state, var_count));
 }
 
-static void gen_set_const(dl89_term *term, const gen_case *c,
+static void gen_set_const(datalog89_term *term, const gen_case *c,
                           unsigned long *state)
 {
-    term->kind = DL89_TERM_CONST;
+    term->kind = DATALOG89_TERM_CONST;
     term->u.constant = c->constants[gen_below(state, c->constant_count)];
 }
 
@@ -72,7 +73,7 @@ static void gen_rule_body(gen_case *c, gen_rule *rule, size_t var_count,
         rule->body[b].terms = NULL;
         if (arity > 0)
         {
-            dl89_term *first;
+            datalog89_term *first;
 
             first = gen_next_term(rule);
             if (gen_below(state, 3) == 0)
@@ -86,7 +87,7 @@ static void gen_rule_body(gen_case *c, gen_rule *rule, size_t var_count,
             rule->body[b].terms = first;
             for (p = 1; p < arity; ++p)
             {
-                dl89_term *term;
+                datalog89_term *term;
 
                 term = gen_next_term(rule);
                 if (gen_below(state, 4) == 0)
@@ -120,7 +121,7 @@ static size_t gen_body_var_count(const gen_rule *rule)
     {
         for (p = 0; p < rule->body[b].arity; ++p)
         {
-            if (rule->body[b].terms[p].kind == DL89_TERM_VAR)
+            if (rule->body[b].terms[p].kind == DATALOG89_TERM_VAR)
             {
                 n = n + 1;
             }
@@ -130,7 +131,7 @@ static size_t gen_body_var_count(const gen_rule *rule)
 }
 
 static void gen_pick_body_var(const gen_rule *rule, size_t which,
-                              dl89_term *out)
+                              datalog89_term *out)
 {
     size_t b;
     size_t p;
@@ -141,7 +142,7 @@ static void gen_pick_body_var(const gen_rule *rule, size_t which,
     {
         for (p = 0; p < rule->body[b].arity; ++p)
         {
-            if (rule->body[b].terms[p].kind == DL89_TERM_VAR)
+            if (rule->body[b].terms[p].kind == DATALOG89_TERM_VAR)
             {
                 if (n == which)
                 {
@@ -193,7 +194,7 @@ static void gen_rule_head(gen_case *c, gen_rule *rule, unsigned long *state)
     vars = gen_body_var_count(rule);
     for (p = 0; p < arity; ++p)
     {
-        dl89_term *term;
+        datalog89_term *term;
 
         term = gen_next_term(rule);
         if (p == 0)
@@ -269,13 +270,13 @@ void gen_build(gen_case *c, unsigned long seed)
     c->relation_count = 1 + gen_below(&state, GEN_MAX_RELATIONS);
     for (i = 0; i < c->relation_count; ++i)
     {
-        c->relations[i].relation = (dl89_rel)(i + 1);
+        c->relations[i].relation = (datalog89_rel)(i + 1);
         c->relations[i].arity = gen_below(&state, GEN_MAX_ARITY + 1);
     }
     c->constant_count = 1 + gen_below(&state, GEN_MAX_CONSTANTS);
     for (i = 0; i < c->constant_count; ++i)
     {
-        c->constants[i] = (dl89_const)(100 + gen_below(&state, 900));
+        c->constants[i] = (datalog89_const)(100 + gen_below(&state, 900));
     }
     c->rule_count = gen_below(&state, GEN_MAX_RULES + 1);
     for (r = 0; r < c->rule_count; ++r)
@@ -317,7 +318,7 @@ void gen_print(const gen_case *c, FILE *out)
             {
                 fprintf(out, ", ");
             }
-            if (rule->head.terms[p].kind == DL89_TERM_CONST)
+            if (rule->head.terms[p].kind == DATALOG89_TERM_CONST)
             {
                 fprintf(out, "%lu",
                         (unsigned long)rule->head.terms[p].u.constant);
@@ -346,7 +347,7 @@ void gen_print(const gen_case *c, FILE *out)
                 {
                     fprintf(out, ", ");
                 }
-                if (rule->body[b].terms[p].kind == DL89_TERM_CONST)
+                if (rule->body[b].terms[p].kind == DATALOG89_TERM_CONST)
                 {
                     fprintf(out, "%lu",
                             (unsigned long)rule->body[b].terms[p].u.constant);

@@ -1,9 +1,9 @@
-#ifndef DL89_TEST_H
-#define DL89_TEST_H
+#ifndef DATALOG89_TEST_H
+#define DATALOG89_TEST_H
 
 #include <stdio.h>
 
-extern int dl89_test_failures;
+extern int datalog89_test_failures;
 
 #define T_ASSERT(expr)                                                         \
     do                                                                         \
@@ -11,7 +11,7 @@ extern int dl89_test_failures;
         if (!(expr))                                                           \
         {                                                                      \
             fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #expr);    \
-            dl89_test_failures = dl89_test_failures + 1;                       \
+            datalog89_test_failures = datalog89_test_failures + 1;                       \
         }                                                                      \
     } while (0)
 
@@ -23,7 +23,7 @@ extern int dl89_test_failures;
         {                                                                      \
             fprintf(stderr, "FAIL %s:%d: %s => %d (expected %d)\n", __FILE__,  \
                     __LINE__, #expr, t_status_, (expected));                   \
-            dl89_test_failures = dl89_test_failures + 1;                       \
+            datalog89_test_failures = datalog89_test_failures + 1;                       \
         }                                                                      \
     } while (0)
 
@@ -37,7 +37,7 @@ extern int dl89_test_failures;
             fprintf(stderr, "FAIL %s:%d: %s==%s (%lu != %lu)\n", __FILE__,     \
                     __LINE__, #a, #b, (unsigned long)t_a_,                     \
                     (unsigned long)t_b_);                                      \
-            dl89_test_failures = dl89_test_failures + 1;                       \
+            datalog89_test_failures = datalog89_test_failures + 1;                       \
         }                                                                      \
     } while (0)
 

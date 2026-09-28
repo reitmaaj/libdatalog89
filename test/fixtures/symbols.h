@@ -1,8 +1,8 @@
-#ifndef DL89_SYMBOLS_H
-#define DL89_SYMBOLS_H
+#ifndef DATALOG89_SYMBOLS_H
+#define DATALOG89_SYMBOLS_H
 
 /* Common symbolic fixture: fixed numeric identifiers with no special
- * meaning to libdl89. */
+ * meaning to libdatalog89. */
 
 enum
 {
@@ -36,6 +36,6 @@ enum
     V_Z = 3
 };
 
-#define DL89_ULMAX ((unsigned long)-1)
+#define DATALOG89_ULMAX ((unsigned long)-1)
 
 #endif

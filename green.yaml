@@ -16,11 +16,11 @@ compatibility_paths: []
 # with the GREEN_PURE markers in src/.
 pure_functions:
     - ops_complete
-    - dl89_priv_store_valid
-    - dl89_priv_registry_find
+    - datalog89_priv_store_valid
+    - datalog89_priv_registry_find
     - arity_next_cap
-    - dl89_status_name
-    - dl89_status_message
+    - datalog89_status_name
+    - datalog89_status_message
     - atom_of
     - atom_count_of
     - body_arity
@@ -38,7 +38,7 @@ pure_functions:
     - var_in_body
     - head_var_unsafe
     - check_head_safety
-    - dl89_priv_rule_check
+    - datalog89_priv_rule_check
     - add_arity
     - sum_overflows
     - max_arity_of
