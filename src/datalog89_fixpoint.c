@@ -1,12 +1,12 @@
-/* datalog89_fixpoint.c - least-fixed-point scheduling over the plan.
+/* datalog89_fixpoint.c - least-fixed-point scheduling over SCCs.
  *
- * Round 0 evaluates each rule's no-delta seed variant over the full store
- * and records newly inserted tuples in the delta table. Each later round
- * evaluates, for every variant whose delta position references a derivable
- * relation and whose delta is nonempty, that variant: the delta step
- * iterates the previous round's delta while other steps scan the store.
- * The run stops when a round derives nothing new. Variant structure is
- * static; the scheduler only selects which precompiled variants fire. */
+ * SCCs execute in topological (scheduling) order. A nonrecursive SCC
+ * evaluates each of its variants exactly once against the full store. A
+ * recursive SCC seeds by evaluating each of its variants once, records
+ * newly inserted tuples in a local delta table, then iterates its delta
+ * variants (delta step iterating the previous round's delta, other steps
+ * scanning the store) until a round derives nothing new. Variant structure
+ * is static; the scheduler only selects which precompiled variants fire. */
 
 #include <string.h>
 
@@ -220,6 +220,74 @@ int datalog89_priv_delta_record(datalog89_priv_delta_table *table,
 
 /* --- variant scheduling ------------------------------------------------- */
 
+static int seed_variant(datalog89_eval *eval,
+                        const struct datalog89_priv_plan *plan,
+                        const struct datalog89_priv_variant *variant,
+                        datalog89_priv_delta_table *sink)
+{
+    datalog89_priv_crule *rule;
+    int st;
+
+    rule = &eval->rules[variant->rule_index];
+    st = datalog89_priv_join_variant(eval, rule, plan, variant, sink, NULL);
+    return st;
+}
+
+static int eval_once(datalog89_eval *eval,
+                     const struct datalog89_priv_plan *plan,
+                     const struct datalog89_priv_scc *scc)
+{
+    size_t v;
+    int st;
+
+    for (v = 0; v < scc->nvariants; ++v)
+    {
+        st = seed_variant(eval, plan, &plan->variants[scc->first_variant + v],
+                          NULL);
+        if (st != DATALOG89_OK)
+        {
+            return st;
+        }
+    }
+    return DATALOG89_OK;
+}
+
+static int seed_one(datalog89_eval *eval,
+                    const struct datalog89_priv_plan *plan,
+                    const struct datalog89_priv_scc *scc, size_t v,
+                    datalog89_priv_delta_table *delta)
+{
+    const struct datalog89_priv_variant *variant;
+    int st;
+
+    variant = &plan->variants[scc->first_variant + v];
+    if (variant->delta_pos != variant->nsteps)
+    {
+        return DATALOG89_OK;
+    }
+    st = seed_variant(eval, plan, variant, delta);
+    return st;
+}
+
+static int seed_scc(datalog89_eval *eval,
+                    const struct datalog89_priv_plan *plan,
+                    const struct datalog89_priv_scc *scc,
+                    datalog89_priv_delta_table *delta)
+{
+    size_t v;
+    int st;
+
+    for (v = 0; v < scc->nvariants; ++v)
+    {
+        st = seed_one(eval, plan, scc, v, delta);
+        if (st != DATALOG89_OK)
+        {
+            return st;
+        }
+    }
+    return DATALOG89_OK;
+}
+
 static int run_variant(datalog89_eval *eval,
                        const struct datalog89_priv_plan *plan,
                        size_t variant_index,
@@ -233,10 +301,6 @@ static int run_variant(datalog89_eval *eval,
     int st;
 
     variant = &plan->variants[variant_index];
-    if (variant->idb_delta == 0)
-    {
-        return DATALOG89_OK;
-    }
     step = &plan->steps[variant->first_step + variant->delta_pos];
     facts = datalog89_priv_delta_find(delta, step->relation, step->arity);
     if (facts == NULL)
@@ -250,54 +314,21 @@ static int run_variant(datalog89_eval *eval,
 
 static int run_round(datalog89_eval *eval,
                      const struct datalog89_priv_plan *plan,
+                     const struct datalog89_priv_scc *scc,
                      const datalog89_priv_delta_table *delta,
                      datalog89_priv_delta_table *next)
 {
     size_t v;
     int st;
 
-    for (v = 0; v < plan->nvariants; ++v)
+    for (v = 0; v < scc->nvariants; ++v)
     {
-        if (plan->variants[v].delta_pos == plan->variants[v].nsteps)
+        if (plan->variants[scc->first_variant + v].delta_pos ==
+            plan->variants[scc->first_variant + v].nsteps)
         {
             continue;
         }
-        st = run_variant(eval, plan, v, delta, next);
-        if (st != DATALOG89_OK)
-        {
-            return st;
-        }
-    }
-    return DATALOG89_OK;
-}
-
-static int seed_one(datalog89_eval *eval,
-                    const struct datalog89_priv_plan *plan, size_t v,
-                    datalog89_priv_delta_table *delta)
-{
-    datalog89_priv_crule *rule;
-    int st;
-
-    rule = &eval->rules[plan->variants[v].rule_index];
-    st = datalog89_priv_join_variant(eval, rule, plan, &plan->variants[v],
-                                     delta, NULL);
-    return st;
-}
-
-static int seed_round(datalog89_eval *eval,
-                      const struct datalog89_priv_plan *plan,
-                      datalog89_priv_delta_table *delta)
-{
-    size_t v;
-    int st;
-
-    for (v = 0; v < plan->nvariants; ++v)
-    {
-        if (plan->variants[v].delta_pos != plan->variants[v].nsteps)
-        {
-            continue;
-        }
-        st = seed_one(eval, plan, v, delta);
+        st = run_variant(eval, plan, scc->first_variant + v, delta, next);
         if (st != DATALOG89_OK)
         {
             return st;
@@ -325,12 +356,13 @@ static void fixpoint_fail(datalog89_priv_delta_table *delta,
 
 static int fixpoint_step(datalog89_eval *eval,
                          const struct datalog89_priv_plan *plan,
+                         const struct datalog89_priv_scc *scc,
                          datalog89_priv_delta_table *delta,
                          datalog89_priv_delta_table *next)
 {
     int st;
 
-    st = run_round(eval, plan, delta, next);
+    st = run_round(eval, plan, scc, delta, next);
     if (st != DATALOG89_OK)
     {
         return st;
@@ -340,7 +372,9 @@ static int fixpoint_step(datalog89_eval *eval,
     return DATALOG89_OK;
 }
 
-int datalog89_priv_fixpoint_run(datalog89_eval *eval)
+static int eval_recursive(datalog89_eval *eval,
+                          const struct datalog89_priv_plan *plan,
+                          const struct datalog89_priv_scc *scc)
 {
     datalog89_priv_delta_table delta;
     datalog89_priv_delta_table next;
@@ -348,7 +382,7 @@ int datalog89_priv_fixpoint_run(datalog89_eval *eval)
 
     table_init(&delta);
     table_init(&next);
-    st = seed_round(eval, eval->plan, &delta);
+    st = seed_scc(eval, plan, scc, &delta);
     if (st != DATALOG89_OK)
     {
         fixpoint_fail(&delta, &next);
@@ -356,7 +390,7 @@ int datalog89_priv_fixpoint_run(datalog89_eval *eval)
     }
     while (delta.total > 0)
     {
-        st = fixpoint_step(eval, eval->plan, &delta, &next);
+        st = fixpoint_step(eval, plan, scc, &delta, &next);
         if (st != DATALOG89_OK)
         {
             fixpoint_fail(&delta, &next);
@@ -365,5 +399,36 @@ int datalog89_priv_fixpoint_run(datalog89_eval *eval)
     }
     datalog89_priv_delta_table_free(&delta);
     datalog89_priv_delta_table_free(&next);
+    return DATALOG89_OK;
+}
+
+static int eval_scc(datalog89_eval *eval,
+                    const struct datalog89_priv_plan *plan,
+                    const struct datalog89_priv_scc *scc)
+{
+    int st;
+
+    if (scc->recursive != 0)
+    {
+        st = eval_recursive(eval, plan, scc);
+        return st;
+    }
+    st = eval_once(eval, plan, scc);
+    return st;
+}
+
+int datalog89_priv_fixpoint_run(datalog89_eval *eval)
+{
+    size_t s;
+    int st;
+
+    for (s = 0; s < eval->plan->nsccs; ++s)
+    {
+        st = eval_scc(eval, eval->plan, &eval->plan->sccs[s]);
+        if (st != DATALOG89_OK)
+        {
+            return st;
+        }
+    }
     return DATALOG89_OK;
 }

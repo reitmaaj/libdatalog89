@@ -96,18 +96,17 @@ a newly registered arity if the store insert fails.
 
 `run` sets the busy flag, builds the plan when no cached plan exists,
 computes the fixed point, and clears the flag on every exit path. Each run
-starts fresh. Round 0 evaluates each rule's no-delta seed variant over the
-full store, seeding a delta table with newly inserted tuples. Later rounds
-evaluate, for each variant whose delta position references a derivable
-relation (IDB) and whose delta is nonempty, that variant: its delta step
-iterates the previous round's delta while other steps scan the store. The
-run stops when a round derives nothing new. This is standard semi-naive
-evaluation over statically expanded variants, implemented in
-`src/datalog89_fixpoint.c` with per-relation delta tables that grow through the
-internal memory seam (so the allocation-failure campaign covers them). The
-plan interpreter in `src/datalog89_join.c` walks each variant's steps with
-precomputed binding patterns; the evaluator never rediscovers which body
-positions are recursive or which scan positions are bound.
+starts fresh. The plan's SCCs execute in scheduling order. A nonrecursive
+SCC evaluates each of its variants exactly once against the full store. A
+recursive SCC seeds by evaluating each of its seed variants once, recording
+newly inserted tuples in a local delta table; later rounds evaluate the
+SCC's delta variants (the delta step iterates the previous round's delta,
+other steps scan the store) until a round derives nothing new. Variant
+structure — which body positions are recursive within the SCC, and each
+step's static binding pattern — is fixed at plan build time; the scheduler
+in `src/datalog89_fixpoint.c` only selects which precompiled variants fire,
+and the plan interpreter in `src/datalog89_join.c` never rediscovers
+bindings at run time.
 
 Every scan opened for a step is closed exactly once on all paths, including
 `scan_open`/`scan_next` failures and nested-body errors; error unwinding

@@ -47,7 +47,6 @@ pure_functions:
     - delta_tuple_at
     - relation_is_idb
     - cap_double
-    - idb_of
     - add_cols
     - sum
     - atom_col_off
@@ -60,3 +59,16 @@ pure_functions:
     - add_const
     - kind_is_compare
     - env_equals
+    - rel_tab_find
+    - rel_cap_next
+    - adj_index
+    - adj_has
+    - low_min
+    - comp_done
+    - comp_is_recursive
+    - head_scc
+    - position_delta
+    - position_skip
+    - add_one
+    - plan_scc_count
+    - variant_recursive

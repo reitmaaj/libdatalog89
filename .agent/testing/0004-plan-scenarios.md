@@ -16,9 +16,8 @@ R=11; variables X=1 Y=2 Z=3.
 SCENARIO PL-1 SCC classification
     GIVEN path(X,Y) :- edge(X,Y) and path(X,Z) :- path(X,Y), edge(Y,Z)
     WHEN the plan is built
-    THEN the plan reports exactly two SCCs in topological order, the first
-         containing edge only (recursive=0) and the second containing path
-         only (recursive=1)
+    THEN the plan reports exactly one SCC, containing path only
+         (recursive=1); edge is EDB and belongs to no SCC
 
 SCENARIO PL-2 nonrecursive SCC runs each rule once
     GIVEN p(X) :- q(X), q(X) :- r(X), r(X) :- edge(X,A) with facts
@@ -46,18 +45,19 @@ SCENARIO PL-5 recursive SCC seeding
 ## Semi-naive variant expansion
 
 SCENARIO PL-6 variant count
-    GIVEN a rule whose body mentions the SCC's recursive relations at k
-          positions
+    GIVEN a rule whose head relation lies in a recursive SCC and whose body
+          mentions relations of that SCC at k positions
     WHEN the plan is built
-    THEN the rule compiles to exactly k variants, one per recursive position;
-         a nonrecursive rule compiles to exactly one variant; a rule with no
-         recursive body atom compiles to exactly one variant
+    THEN the rule compiles to exactly k + 1 variants, one per recursive
+         position plus the seed variant; a rule in a nonrecursive SCC
+         compiles to exactly one variant (the seed variant)
 
 SCENARIO PL-7 variant source kinds
     GIVEN variant i of a recursive rule, delta at body position i
     WHEN the plan is inspected
-    THEN step i carries source DELTA, every other recursive body atom carries
-         OLD, and every EDB or earlier-SCC atom carries FULL
+    THEN step i carries source DELTA, every other step of the variant scans
+         the store (source FULL; SCC-aware OLD marking arrives with a later
+         phase), and the seed variant has no DELTA step
 
 SCENARIO PL-8 delta atom leads the join
     GIVEN any variant with a DELTA step

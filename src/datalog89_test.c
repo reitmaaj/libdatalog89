@@ -30,6 +30,16 @@ size_t datalog89_test_plan_variant_count(const datalog89_eval *eval)
     return eval->plan->nvariants;
 }
 
+GREEN_PURE
+static int variant_recursive(const struct datalog89_priv_variant *v)
+{
+    if (v->delta_pos < v->nsteps)
+    {
+        return 1;
+    }
+    return 0;
+}
+
 datalog89_status
 datalog89_test_plan_variant_info(const datalog89_eval *eval, size_t variant,
                                  datalog89_test_variant_info *out)
@@ -57,7 +67,49 @@ datalog89_test_plan_variant_info(const datalog89_eval *eval, size_t variant,
     out->head_arity = v->head_arity;
     out->nsteps = v->nsteps;
     out->delta_pos = v->delta_pos;
-    out->idb_delta = v->idb_delta;
+    out->recursive = variant_recursive(v);
+    return DATALOG89_OK;
+}
+
+size_t datalog89_test_plan_scc_count(const datalog89_eval *eval)
+{
+    if (eval == NULL)
+    {
+        return 0;
+    }
+    if (eval->plan == NULL)
+    {
+        return 0;
+    }
+    return eval->plan->nsccs;
+}
+
+datalog89_status datalog89_test_plan_scc_info(const datalog89_eval *eval,
+                                              size_t scc,
+                                              datalog89_test_scc_info *out)
+{
+    const struct datalog89_priv_scc *s;
+
+    if (eval == NULL)
+    {
+        return DATALOG89_EINVAL;
+    }
+    if (out == NULL)
+    {
+        return DATALOG89_EINVAL;
+    }
+    if (eval->plan == NULL)
+    {
+        return DATALOG89_EINVAL;
+    }
+    if (scc >= eval->plan->nsccs)
+    {
+        return DATALOG89_EINVAL;
+    }
+    s = &eval->plan->sccs[scc];
+    out->first_variant = s->first_variant;
+    out->nvariants = s->nvariants;
+    out->recursive = (int)s->recursive;
     return DATALOG89_OK;
 }
 

@@ -21,7 +21,7 @@ typedef struct
     size_t head_arity;
     size_t nsteps;
     size_t delta_pos;
-    int idb_delta;
+    int recursive;
 } datalog89_test_variant_info;
 
 typedef struct
@@ -33,14 +33,26 @@ typedef struct
     size_t nconst;
 } datalog89_test_step_info;
 
+typedef struct
+{
+    size_t first_variant;
+    size_t nvariants;
+    int recursive;
+} datalog89_test_scc_info;
+
 /* Number of successful plan builds since evaluator creation. */
 size_t datalog89_test_plan_builds(const datalog89_eval *eval);
 
 /* Number of variants in the cached plan; zero when no plan is built. */
 size_t datalog89_test_plan_variant_count(const datalog89_eval *eval);
 
-/* Copy one variant's summary; DATALOG89_EINVAL on NULL arguments, a missing
- * plan, or an out-of-range variant index. */
+/* Number of SCCs in the cached plan, in scheduling (topological) order.
+ * EDB relations belong to no SCC. Zero when no plan is built. */
+size_t datalog89_test_plan_scc_count(const datalog89_eval *eval);
+
+/* Copy one variant's summary; recursive is 1 when the variant carries a
+ * DELTA step at a position recursive within its SCC. DATALOG89_EINVAL on
+ * NULL arguments, a missing plan, or an out-of-range variant index. */
 datalog89_status
 datalog89_test_plan_variant_info(const datalog89_eval *eval, size_t variant,
                                  datalog89_test_variant_info *out);
@@ -51,5 +63,11 @@ datalog89_test_plan_variant_info(const datalog89_eval *eval, size_t variant,
 datalog89_status datalog89_test_plan_step_info(const datalog89_eval *eval,
                                                size_t variant, size_t step,
                                                datalog89_test_step_info *out);
+
+/* Copy one SCC's summary. DATALOG89_EINVAL on NULL arguments, a missing
+ * plan, or an out-of-range SCC index. */
+datalog89_status datalog89_test_plan_scc_info(const datalog89_eval *eval,
+                                              size_t scc,
+                                              datalog89_test_scc_info *out);
 
 #endif

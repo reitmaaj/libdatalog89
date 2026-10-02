@@ -3,6 +3,8 @@
 
 #include "datalog89_priv.h"
 
+#define DATALOG89_PRIV_NO_INDEX ((size_t)-1)
+
 /* Immutable execution plan IR. One plan describes the whole frozen program
  * with contiguous arrays: variants point into the step array, steps point
  * into the binding-pattern array. Nothing mutates a built plan. */
@@ -47,7 +49,15 @@ struct datalog89_priv_variant
     size_t first_step;
     size_t nsteps;
     size_t delta_pos;
-    int idb_delta;
+};
+
+/* One strongly connected component of the predicate dependency graph, in
+ * scheduling (topological) order. EDB relations belong to no SCC. */
+struct datalog89_priv_scc
+{
+    size_t first_variant;
+    size_t nvariants;
+    unsigned recursive;
 };
 
 struct datalog89_priv_plan
@@ -58,6 +68,8 @@ struct datalog89_priv_plan
     size_t nsteps;
     struct datalog89_priv_bind *cols;
     size_t ncols;
+    struct datalog89_priv_scc *sccs;
+    size_t nsccs;
 };
 
 #endif
