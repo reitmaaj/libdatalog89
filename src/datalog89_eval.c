@@ -70,8 +70,16 @@ datalog89_status datalog89_eval_create(const datalog89_eval_config *config,
     eval->arity_count = 0;
     eval->arity_cap = 0;
     eval->running = 0;
+    eval->plan = NULL;
+    eval->plan_builds = 0;
     *out = eval;
     return DATALOG89_OK;
+}
+
+static void plan_release(datalog89_eval *eval)
+{
+    datalog89_priv_plan_free(eval->plan);
+    datalog89_priv_mem_free(eval->plan);
 }
 
 void datalog89_eval_destroy(datalog89_eval *eval)
@@ -81,6 +89,10 @@ void datalog89_eval_destroy(datalog89_eval *eval)
     if (eval == NULL)
     {
         return;
+    }
+    if (eval->plan != NULL)
+    {
+        plan_release(eval);
     }
     for (i = 0; i < eval->rule_count; ++i)
     {
@@ -267,7 +279,15 @@ datalog89_status datalog89_eval_run(datalog89_eval *eval)
         return DATALOG89_EBUSY;
     }
     eval->running = 1;
-    st = datalog89_priv_fixpoint_run(eval);
+    st = DATALOG89_OK;
+    if (eval->plan == NULL)
+    {
+        st = datalog89_priv_plan_build(eval);
+    }
+    if (st == DATALOG89_OK)
+    {
+        st = datalog89_priv_fixpoint_run(eval);
+    }
     eval->running = 0;
     return (datalog89_status)st;
 }

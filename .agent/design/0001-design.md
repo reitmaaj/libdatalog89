@@ -46,22 +46,36 @@ are valid.
   `test/fixtures/fault_mem.c` instead of this object, so allocation failure
   is injectable without changing the public header.
 - `src/datalog89_eval.c` — evaluator lifetime, arity registry, `add_fact`,
-  public `run` wrapper, busy flag.
+  public `run` wrapper, busy flag, plan cache ownership.
 - `src/datalog89_rule.c` — structural validation, deep copy/compile, atomic
-  installation.
-- `src/datalog89_join.c` — body evaluation: binding construction, tuple
-  unification, recursion over body atoms, head instantiation, insertion.
-- `src/datalog89_fixpoint.c` — least-fixed-point scheduling.
+  installation, plan-cache invalidation.
+- `src/datalog89_plan.c` — program plan compilation: per-rule variant
+  expansion, static binding patterns, plan build/release (see 0002-plan-design).
+- `src/datalog89_join.c` — plan interpreter: pattern-driven scan filling,
+  tuple unification, head instantiation, insertion.
+- `src/datalog89_fixpoint.c` — least-fixed-point scheduling over precompiled
+  variants.
+- `src/datalog89_test.c` + `src/datalog89_test.h` — test-only plan
+  introspection hooks, compiled only into test programs.
 
 ### Data model
 
 `struct datalog89_eval` owns: the store descriptor, a growable vector of compiled
-rules, a growable arity registry (`relation -> arity`), and a `running` flag.
+rules, a growable arity registry (`relation -> arity`), the cached immutable
+program plan (`struct datalog89_priv_plan`, see 0002-plan-design) with its
+build counter, and a `running` flag.
 
 A compiled rule owns deep copies of all terms and atoms, a variable-id to
 slot map, an environment (`env` values + `bound` flags per slot), scan
 binding scratch (`values`, `bvalues`), a tuple scratch buffer sized to the
 largest atom arity, and a log of slots bound while unifying one tuple.
+
+The plan owns contiguous arrays of variants, steps, and static binding
+patterns. Each pattern column is CONST (scan-bound constant), SLOT (bound by
+an earlier step), EQ (bound by an earlier column of the same atom: free at
+scan time, checked during unification), or FREE. The plan is built lazily at
+the first run after program mutation, cached across runs, invalidated by
+`add_rule`, and released by `destroy`.
 
 Sparse identifiers are handled by linear lookup, never by dense indexing or
 sentinels. `0` and `ULONG_MAX` are ordinary values.
@@ -80,17 +94,22 @@ a newly registered arity if the store insert fails.
 
 ### Evaluation
 
-`run` sets the busy flag, computes the fixed point, and clears the flag on
-every exit path. Each run starts fresh. Round 0 evaluates every rule over the
+`run` sets the busy flag, builds the plan when no cached plan exists,
+computes the fixed point, and clears the flag on every exit path. Each run
+starts fresh. Round 0 evaluates each rule's no-delta seed variant over the
 full store, seeding a delta table with newly inserted tuples. Later rounds
-evaluate, for each rule and each body position whose relation is derivable
-(IDB), a variant whose scan at that position iterates the previous round's
-delta while other positions scan the full store. The run stops when a round
-derives nothing new. This is standard semi-naive evaluation, implemented in
+evaluate, for each variant whose delta position references a derivable
+relation (IDB) and whose delta is nonempty, that variant: its delta step
+iterates the previous round's delta while other steps scan the store. The
+run stops when a round derives nothing new. This is standard semi-naive
+evaluation over statically expanded variants, implemented in
 `src/datalog89_fixpoint.c` with per-relation delta tables that grow through the
-internal memory seam (so the allocation-failure campaign covers them).
+internal memory seam (so the allocation-failure campaign covers them). The
+plan interpreter in `src/datalog89_join.c` walks each variant's steps with
+precomputed binding patterns; the evaluator never rediscovers which body
+positions are recursive or which scan positions are bound.
 
-Every scan opened for an atom is closed exactly once on all paths, including
+Every scan opened for a step is closed exactly once on all paths, including
 `scan_open`/`scan_next` failures and nested-body errors; error unwinding
 closes deeper scans first.
 

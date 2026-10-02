@@ -1,14 +1,20 @@
-/* datalog89_join.c - body joins, unification, head instantiation, insertion.
+/* datalog89_join.c - plan-driven body joins, unification, head emission.
  *
- * Body atoms are evaluated left to right with recursive backtracking. One
- * body position may instead iterate a delta (semi-naive rounds); the join is
- * otherwise identical. Written to the green worker/controller discipline. */
+ * A variant is a fixed sequence of steps. Each step either scans the store
+ * or iterates the previous round's delta, unifies candidate tuples against
+ * the step's static binding pattern, and recurses into the next step. The
+ * binding pattern is precomputed at plan build time, so the evaluator never
+ * re-derives which positions are bound. Written to the green
+ * worker/controller discipline. */
 
 #include "datalog89_priv.h"
+#include "datalog89_priv_plan.h"
 
-static int eval_body(datalog89_eval *eval, datalog89_priv_crule *rule,
-                     size_t depth, datalog89_priv_delta_table *sink,
-                     const datalog89_priv_delta *delta, size_t delta_pos);
+static int eval_step(datalog89_eval *eval, datalog89_priv_crule *rule,
+                     const struct datalog89_priv_plan *plan,
+                     const struct datalog89_priv_variant *variant, size_t index,
+                     datalog89_priv_delta_table *sink,
+                     const datalog89_priv_delta *delta);
 
 /* --- pure value workers ------------------------------------------------- */
 
@@ -30,56 +36,48 @@ static const datalog89_const *delta_tuple_at(const datalog89_priv_delta *delta,
     return delta->tuples + index * arity;
 }
 
-/* --- binding construction ---------------------------------------------- */
+/* --- scan pattern filling ----------------------------------------------- */
 
-static void bind_constant(datalog89_priv_crule *rule, datalog89_const constant,
-                          size_t p)
+static void set_scan_value(datalog89_priv_crule *rule, size_t p,
+                           datalog89_const value)
 {
-    rule->values[p] = constant;
+    rule->values[p] = value;
     rule->bvalues[p] = 1;
 }
 
-static void bind_bound(datalog89_priv_crule *rule, size_t slot, size_t p)
-{
-    rule->values[p] = rule->env[slot];
-    rule->bvalues[p] = 1;
-}
-
-static void bind_free(datalog89_priv_crule *rule, size_t p)
+static void set_scan_free(datalog89_priv_crule *rule, size_t p)
 {
     rule->values[p] = 0;
     rule->bvalues[p] = 0;
 }
 
-static void bind_position(datalog89_priv_crule *rule,
-                          const datalog89_priv_catom *atom, size_t p)
+static void fill_one(datalog89_priv_crule *rule,
+                     const struct datalog89_priv_bind *col, size_t p)
 {
-    const datalog89_priv_cterm *term;
-    size_t slot;
+    unsigned char kind;
 
-    term = &atom->terms[p];
-    if (term->kind == DATALOG89_TERM_CONST)
+    kind = col->kind;
+    if (kind == (unsigned char)DATALOG89_PRIV_BIND_CONST)
     {
-        bind_constant(rule, term->constant, p);
+        set_scan_value(rule, p, col->constant);
         return;
     }
-    slot = term->slot;
-    if (rule->bound[slot] != 0)
+    if (kind == (unsigned char)DATALOG89_PRIV_BIND_SLOT)
     {
-        bind_bound(rule, slot, p);
+        set_scan_value(rule, p, rule->env[col->slot]);
         return;
     }
-    bind_free(rule, p);
+    set_scan_free(rule, p);
 }
 
-static void build_bindings(datalog89_priv_crule *rule,
-                           const datalog89_priv_catom *atom)
+static void fill_values(datalog89_priv_crule *rule,
+                        const struct datalog89_priv_bind *cols, size_t arity)
 {
     size_t p;
 
-    for (p = 0; p < atom->arity; ++p)
+    for (p = 0; p < arity; ++p)
     {
-        bind_position(rule, atom, p);
+        fill_one(rule, &cols[p], p);
     }
 }
 
@@ -110,51 +108,82 @@ static void clear_bound(datalog89_priv_crule *rule)
     }
 }
 
-/* --- unification -------------------------------------------------------- */
+/* --- pattern unification ------------------------------------------------ */
 
-static int unify_position(datalog89_priv_crule *rule,
-                          const datalog89_priv_cterm *term,
-                          datalog89_const value, size_t *log, size_t *n)
+GREEN_PURE
+static int kind_is_compare(unsigned char kind)
 {
-    size_t slot;
+    if (kind == (unsigned char)DATALOG89_PRIV_BIND_SLOT)
+    {
+        return 1;
+    }
+    if (kind == (unsigned char)DATALOG89_PRIV_BIND_EQ)
+    {
+        return 1;
+    }
+    return 0;
+}
 
-    if (term->kind == DATALOG89_TERM_CONST)
+GREEN_PURE
+static int env_equals(const datalog89_priv_crule *rule, size_t slot,
+                      datalog89_const value)
+{
+    if (rule->env[slot] == value)
     {
-        if (value != term->constant)
-        {
-            return 0;
-        }
         return 1;
     }
-    slot = term->slot;
-    if (rule->bound[slot] != 0)
-    {
-        if (rule->env[slot] != value)
-        {
-            return 0;
-        }
-        return 1;
-    }
+    return 0;
+}
+
+static void bind_slot(datalog89_priv_crule *rule, size_t slot,
+                      datalog89_const value, size_t *log, size_t *n)
+{
     rule->env[slot] = value;
     rule->bound[slot] = 1;
     log[*n] = slot;
     *n = *n + 1;
+}
+
+static int unify_col(datalog89_priv_crule *rule,
+                     const struct datalog89_priv_bind *col,
+                     datalog89_const value, size_t *log, size_t *n)
+{
+    unsigned char kind;
+
+    kind = col->kind;
+    if (kind == (unsigned char)DATALOG89_PRIV_BIND_CONST)
+    {
+        if (value == col->constant)
+        {
+            return 1;
+        }
+        return 0;
+    }
+    if (kind_is_compare(kind) != 0)
+    {
+        if (env_equals(rule, col->slot, value) != 0)
+        {
+            return 1;
+        }
+        return 0;
+    }
+    bind_slot(rule, col->slot, value, log, n);
     return 1;
 }
 
-static void unify_tuple(datalog89_priv_crule *rule,
-                        const datalog89_priv_catom *atom,
-                        const datalog89_const *tuple, size_t *log,
-                        size_t *bound_count, int *matched)
+static void unify_cols(datalog89_priv_crule *rule,
+                       const struct datalog89_priv_bind *cols, size_t arity,
+                       const datalog89_const *tuple, size_t *log,
+                       size_t *bound_count, int *matched)
 {
     size_t p;
     size_t n;
     int ok;
 
     n = 0;
-    for (p = 0; p < atom->arity; ++p)
+    for (p = 0; p < arity; ++p)
     {
-        ok = unify_position(rule, &atom->terms[p], tuple[p], log, &n);
+        ok = unify_col(rule, &cols[p], tuple[p], log, &n);
         if (ok == 0)
         {
             break;
@@ -162,7 +191,7 @@ static void unify_tuple(datalog89_priv_crule *rule,
     }
     *bound_count = n;
     *matched = 0;
-    if (p == atom->arity)
+    if (p == arity)
     {
         *matched = 1;
     }
@@ -204,13 +233,14 @@ static int emit_head(datalog89_eval *eval, datalog89_priv_crule *rule,
 
 /* --- store scan --------------------------------------------------------- */
 
-static int open_scan(datalog89_eval *eval, const datalog89_priv_crule *rule,
-                     const datalog89_priv_catom *atom, datalog89_scan **scan)
+static int open_scan(datalog89_eval *eval,
+                     const struct datalog89_priv_step *step,
+                     datalog89_priv_crule *rule, datalog89_scan **scan)
 {
     int rc;
 
     rc =
-        eval->store.ops->scan_open(eval->store.ctx, atom->relation, atom->arity,
+        eval->store.ops->scan_open(eval->store.ctx, step->relation, step->arity,
                                    rule->values, rule->bvalues, scan);
     if (rc != 0)
     {
@@ -224,10 +254,11 @@ static int open_scan(datalog89_eval *eval, const datalog89_priv_crule *rule,
 }
 
 static int scan_one(datalog89_eval *eval, datalog89_priv_crule *rule,
-                    const datalog89_priv_catom *atom, size_t depth,
+                    const struct datalog89_priv_plan *plan,
+                    const struct datalog89_priv_variant *variant, size_t index,
+                    const struct datalog89_priv_bind *cols, size_t arity,
                     datalog89_scan *scan, datalog89_priv_delta_table *sink,
-                    const datalog89_priv_delta *delta, size_t delta_pos,
-                    int *done)
+                    const datalog89_priv_delta *delta, int *done)
 {
     size_t *log;
     size_t bound_count;
@@ -250,29 +281,32 @@ static int scan_one(datalog89_eval *eval, datalog89_priv_crule *rule,
     }
     bound_count = 0;
     matched = 0;
-    log = rule->bound_log + depth * rule->tuple_cap;
-    unify_tuple(rule, atom, rule->tuple, log, &bound_count, &matched);
+    log = rule->bound_log + index * rule->tuple_cap;
+    unify_cols(rule, cols, arity, rule->tuple, log, &bound_count, &matched);
     st = DATALOG89_OK;
     if (matched != 0)
     {
-        st = eval_body(eval, rule, depth + 1, sink, delta, delta_pos);
+        st = eval_step(eval, rule, plan, variant, index + 1, sink, delta);
     }
     unbind(rule, log, bound_count);
     return st;
 }
 
-static int scan_atom(datalog89_eval *eval, datalog89_priv_crule *rule,
-                     const datalog89_priv_catom *atom, size_t depth,
+static int scan_step(datalog89_eval *eval, datalog89_priv_crule *rule,
+                     const struct datalog89_priv_plan *plan,
+                     const struct datalog89_priv_variant *variant, size_t index,
+                     const struct datalog89_priv_step *step,
+                     const struct datalog89_priv_bind *cols,
                      datalog89_priv_delta_table *sink,
-                     const datalog89_priv_delta *delta, size_t delta_pos)
+                     const datalog89_priv_delta *delta)
 {
     datalog89_scan *scan;
     int done;
     int st;
 
-    build_bindings(rule, atom);
+    fill_values(rule, cols, step->arity);
     scan = NULL;
-    st = open_scan(eval, rule, atom, &scan);
+    st = open_scan(eval, step, rule, &scan);
     if (st != DATALOG89_OK)
     {
         return st;
@@ -280,8 +314,8 @@ static int scan_atom(datalog89_eval *eval, datalog89_priv_crule *rule,
     done = 0;
     while (done == 0)
     {
-        st = scan_one(eval, rule, atom, depth, scan, sink, delta, delta_pos,
-                      &done);
+        st = scan_one(eval, rule, plan, variant, index, cols, step->arity, scan,
+                      sink, delta, &done);
         if (st != DATALOG89_OK)
         {
             break;
@@ -293,11 +327,13 @@ static int scan_atom(datalog89_eval *eval, datalog89_priv_crule *rule,
 
 /* --- delta iteration ---------------------------------------------------- */
 
-static int delta_step(datalog89_eval *eval, datalog89_priv_crule *rule,
-                      const datalog89_priv_catom *atom, size_t depth,
-                      datalog89_priv_delta_table *sink,
-                      const datalog89_priv_delta *delta, size_t delta_pos,
-                      const datalog89_const *tuple)
+static int delta_one(datalog89_eval *eval, datalog89_priv_crule *rule,
+                     const struct datalog89_priv_plan *plan,
+                     const struct datalog89_priv_variant *variant, size_t index,
+                     const struct datalog89_priv_bind *cols, size_t arity,
+                     datalog89_priv_delta_table *sink,
+                     const datalog89_priv_delta *delta,
+                     const datalog89_const *tuple)
 {
     size_t *log;
     size_t bound_count;
@@ -306,29 +342,31 @@ static int delta_step(datalog89_eval *eval, datalog89_priv_crule *rule,
 
     bound_count = 0;
     matched = 0;
-    log = rule->bound_log + depth * rule->tuple_cap;
-    unify_tuple(rule, atom, tuple, log, &bound_count, &matched);
+    log = rule->bound_log + index * rule->tuple_cap;
+    unify_cols(rule, cols, arity, tuple, log, &bound_count, &matched);
     st = DATALOG89_OK;
     if (matched != 0)
     {
-        st = eval_body(eval, rule, depth + 1, sink, delta, delta_pos);
+        st = eval_step(eval, rule, plan, variant, index + 1, sink, delta);
     }
     unbind(rule, log, bound_count);
     return st;
 }
 
-static int delta_atom(datalog89_eval *eval, datalog89_priv_crule *rule,
-                      const datalog89_priv_catom *atom, size_t depth,
-                      datalog89_priv_delta_table *sink,
-                      const datalog89_priv_delta *delta, size_t delta_pos)
+static int delta_step(datalog89_eval *eval, datalog89_priv_crule *rule,
+                      const struct datalog89_priv_plan *plan,
+                      const struct datalog89_priv_variant *variant,
+                      size_t index, const struct datalog89_priv_bind *cols,
+                      size_t arity, datalog89_priv_delta_table *sink,
+                      const datalog89_priv_delta *delta)
 {
     size_t i;
     int st;
 
     for (i = 0; i < delta->count; ++i)
     {
-        st = delta_step(eval, rule, atom, depth, sink, delta, delta_pos,
-                        delta_tuple_at(delta, atom->arity, i));
+        st = delta_one(eval, rule, plan, variant, index, cols, arity, sink,
+                       delta, delta_tuple_at(delta, arity, i));
         if (st != DATALOG89_OK)
         {
             return st;
@@ -337,40 +375,45 @@ static int delta_atom(datalog89_eval *eval, datalog89_priv_crule *rule,
     return DATALOG89_OK;
 }
 
-/* --- body recursion ----------------------------------------------------- */
+/* --- step recursion ----------------------------------------------------- */
 
-static int eval_body(datalog89_eval *eval, datalog89_priv_crule *rule,
-                     size_t depth, datalog89_priv_delta_table *sink,
-                     const datalog89_priv_delta *delta, size_t delta_pos)
+static int eval_step(datalog89_eval *eval, datalog89_priv_crule *rule,
+                     const struct datalog89_priv_plan *plan,
+                     const struct datalog89_priv_variant *variant, size_t index,
+                     datalog89_priv_delta_table *sink,
+                     const datalog89_priv_delta *delta)
 {
-    const datalog89_priv_catom *atom;
+    const struct datalog89_priv_step *step;
+    const struct datalog89_priv_bind *cols;
     int st;
 
-    if (depth == rule->body_count)
+    if (index == variant->nsteps)
     {
         st = emit_head(eval, rule, sink);
         return st;
     }
-    atom = &rule->body[depth];
-    if (delta != NULL)
+    step = &plan->steps[variant->first_step + index];
+    cols = &plan->cols[step->col_off];
+    if (step->source == DATALOG89_PRIV_SRC_DELTA)
     {
-        if (depth == delta_pos)
-        {
-            st = delta_atom(eval, rule, atom, depth, sink, delta, delta_pos);
-            return st;
-        }
+        st = delta_step(eval, rule, plan, variant, index, cols, step->arity,
+                        sink, delta);
+        return st;
     }
-    st = scan_atom(eval, rule, atom, depth, sink, delta, delta_pos);
+    st = scan_step(eval, rule, plan, variant, index, step, cols, sink, delta);
     return st;
 }
-int datalog89_priv_join_rule(datalog89_eval *eval, datalog89_priv_crule *rule,
-                             datalog89_priv_delta_table *sink,
-                             const datalog89_priv_delta *delta,
-                             size_t delta_pos)
+
+int datalog89_priv_join_variant(datalog89_eval *eval,
+                                datalog89_priv_crule *rule,
+                                const struct datalog89_priv_plan *plan,
+                                const struct datalog89_priv_variant *variant,
+                                datalog89_priv_delta_table *sink,
+                                const datalog89_priv_delta *delta)
 {
     int st;
 
     clear_bound(rule);
-    st = eval_body(eval, rule, 0, sink, delta, delta_pos);
+    st = eval_step(eval, rule, plan, variant, 0, sink, delta);
     return st;
 }

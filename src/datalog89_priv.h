@@ -69,6 +69,12 @@ typedef struct
     size_t total;
 } datalog89_priv_delta_table;
 
+/* Immutable execution plan; src/datalog89_priv_plan.h defines the shape. */
+struct datalog89_priv_plan;
+struct datalog89_priv_variant;
+struct datalog89_priv_bind;
+struct datalog89_priv_step;
+
 struct datalog89_eval
 {
     datalog89_store store;
@@ -79,6 +85,8 @@ struct datalog89_eval
     size_t arity_count;
     size_t arity_cap;
     int running;
+    struct datalog89_priv_plan *plan;
+    size_t plan_builds;
 };
 
 int datalog89_priv_store_valid(const datalog89_store *store);
@@ -107,10 +115,16 @@ const datalog89_priv_delta *
 datalog89_priv_delta_find(const datalog89_priv_delta_table *table,
                           datalog89_rel relation, size_t arity);
 
-int datalog89_priv_join_rule(datalog89_eval *eval, datalog89_priv_crule *rule,
-                             datalog89_priv_delta_table *sink,
-                             const datalog89_priv_delta *delta,
-                             size_t delta_pos);
+int datalog89_priv_plan_build(datalog89_eval *eval);
+void datalog89_priv_plan_free(struct datalog89_priv_plan *plan);
+void datalog89_priv_plan_invalidate(datalog89_eval *eval);
+
+int datalog89_priv_join_variant(datalog89_eval *eval,
+                                datalog89_priv_crule *rule,
+                                const struct datalog89_priv_plan *plan,
+                                const struct datalog89_priv_variant *variant,
+                                datalog89_priv_delta_table *sink,
+                                const datalog89_priv_delta *delta);
 int datalog89_priv_fixpoint_run(datalog89_eval *eval);
 
 #endif

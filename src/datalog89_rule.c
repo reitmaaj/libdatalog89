@@ -727,5 +727,6 @@ int datalog89_priv_rule_install(datalog89_eval *eval,
         install_rollback(eval, start, &compiled);
         return st;
     }
+    datalog89_priv_plan_invalidate(eval);
     return DATALOG89_OK;
 }
