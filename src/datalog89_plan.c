@@ -39,23 +39,19 @@ static size_t add_cols(size_t total, const datalog89_priv_crule *rule,
 }
 
 GREEN_PURE
-static size_t sum(size_t a, size_t b)
+static size_t add_one(size_t n)
 {
-    return a + b;
+    return n + 1;
 }
 
 GREEN_PURE
-static size_t atom_col_off(const datalog89_priv_crule *rule, size_t atom)
+static size_t max_of(size_t a, size_t b)
 {
-    size_t b;
-    size_t off;
-
-    off = 0;
-    for (b = 0; b < atom; ++b)
+    if (a > b)
     {
-        off = add_cols(off, rule, b);
+        return a;
     }
-    return off;
+    return b;
 }
 
 GREEN_PURE
@@ -73,31 +69,6 @@ static const datalog89_priv_cterm *body_term(const datalog89_priv_crule *rule,
                                              size_t atom, size_t col)
 {
     return &rule->body[atom].terms[col];
-}
-
-GREEN_PURE
-static int slot_bound_prev_atom(const datalog89_priv_crule *rule, size_t atom,
-                                size_t slot)
-{
-    size_t b;
-    size_t p;
-    const datalog89_priv_cterm *term;
-
-    for (b = 0; b < atom; ++b)
-    {
-        for (p = 0; p < rule->body[b].arity; ++p)
-        {
-            term = body_term(rule, b, p);
-            if (term->kind == DATALOG89_TERM_VAR)
-            {
-                if (term->slot == slot)
-                {
-                    return 1;
-                }
-            }
-        }
-    }
-    return 0;
 }
 
 GREEN_PURE
@@ -122,14 +93,15 @@ static int slot_bound_same_atom(const datalog89_priv_crule *rule, size_t atom,
 }
 
 GREEN_PURE
-static int bind_kind_of(const datalog89_priv_crule *rule, size_t atom,
-                        size_t col, const datalog89_priv_cterm *term)
+static int bind_kind_of(const datalog89_priv_crule *rule,
+                        const unsigned char *bound, size_t atom, size_t col,
+                        const datalog89_priv_cterm *term)
 {
     if (term->kind == DATALOG89_TERM_CONST)
     {
         return DATALOG89_PRIV_BIND_CONST;
     }
-    if (slot_bound_prev_atom(rule, atom, term->slot) != 0)
+    if (bound[term->slot] != 0)
     {
         return DATALOG89_PRIV_BIND_SLOT;
     }
@@ -138,6 +110,130 @@ static int bind_kind_of(const datalog89_priv_crule *rule, size_t atom,
         return DATALOG89_PRIV_BIND_EQ;
     }
     return DATALOG89_PRIV_BIND_FREE;
+}
+
+/* --- join-order greedy pick --------------------------------------------- */
+
+GREEN_PURE
+static size_t score_col(size_t score, const datalog89_priv_cterm *term,
+                        const unsigned char *bound)
+{
+    if (term->kind == DATALOG89_TERM_CONST)
+    {
+        return score + 1;
+    }
+    if (bound[term->slot] != 0)
+    {
+        return score + 1;
+    }
+    return score;
+}
+
+GREEN_PURE
+static size_t atom_score(const datalog89_priv_crule *rule, size_t atom,
+                         const unsigned char *bound)
+{
+    size_t p;
+    size_t score;
+
+    score = 0;
+    for (p = 0; p < rule->body[atom].arity; ++p)
+    {
+        score = score_col(score, body_term(rule, atom, p), bound);
+    }
+    return score;
+}
+
+GREEN_PURE
+static size_t atom_const(const datalog89_priv_crule *rule, size_t atom)
+{
+    size_t p;
+    size_t n;
+    const datalog89_priv_cterm *term;
+
+    n = 0;
+    for (p = 0; p < rule->body[atom].arity; ++p)
+    {
+        term = body_term(rule, atom, p);
+        if (term->kind == DATALOG89_TERM_CONST)
+        {
+            n = add_one(n);
+        }
+    }
+    return n;
+}
+
+GREEN_PURE
+static int cand_better(size_t score, size_t nconst, size_t best_score,
+                       size_t best_const, size_t best)
+{
+    if (best == DATALOG89_PRIV_NO_INDEX)
+    {
+        return 1;
+    }
+    if (score > best_score)
+    {
+        return 1;
+    }
+    if (score < best_score)
+    {
+        return 0;
+    }
+    if (nconst > best_const)
+    {
+        return 1;
+    }
+    return 0;
+}
+
+static void best_set(size_t *best, size_t *best_score, size_t *best_const,
+                     size_t p, size_t score, size_t nconst)
+{
+    *best = p;
+    *best_score = score;
+    *best_const = nconst;
+}
+
+static void cand_take(const datalog89_priv_crule *rule, size_t p,
+                      const unsigned char *bound, size_t *best,
+                      size_t *best_score, size_t *best_const)
+{
+    size_t score;
+    size_t nconst;
+
+    score = atom_score(rule, p, bound);
+    nconst = atom_const(rule, p);
+    if (cand_better(score, nconst, *best_score, *best_const, *best) != 0)
+    {
+        best_set(best, best_score, best_const, p, score, nconst);
+    }
+}
+
+static size_t pick_atom(const datalog89_priv_crule *rule,
+                        const unsigned char *bound, const unsigned char *used,
+                        size_t forced)
+{
+    size_t p;
+    size_t best;
+    size_t best_score;
+    size_t best_const;
+
+    if (forced != rule->body_count)
+    {
+        return forced;
+    }
+    best = DATALOG89_PRIV_NO_INDEX;
+    best_score = 0;
+    best_const = 0;
+    for (p = 0; p < rule->body_count; ++p)
+    {
+        if (used[p] != 0)
+        {
+            continue;
+        }
+        cand_take(rule, p, bound, &best, &best_score, &best_const);
+    }
+    return best;
 }
 
 /* --- relation node table ------------------------------------------------ */
@@ -686,12 +782,6 @@ static int position_delta(const datalog89_eval *eval, const struct rel_tab *tab,
 }
 
 GREEN_PURE
-static size_t add_one(size_t n)
-{
-    return n + 1;
-}
-
-GREEN_PURE
 static int position_skip(const datalog89_eval *eval, const struct rel_tab *tab,
                          const size_t *comp, size_t rule_index, size_t pos,
                          int scc_recursive)
@@ -715,6 +805,7 @@ static int rule_totals(const datalog89_eval *eval, const struct rel_tab *tab,
     size_t k;
     size_t nv_rule;
     size_t prod;
+    size_t arity_total;
     size_t b;
     size_t scc;
     int rec;
@@ -747,13 +838,20 @@ static int rule_totals(const datalog89_eval *eval, const struct rel_tab *tab,
     {
         return st;
     }
+    arity_total = 0;
     for (b = 0; b < k; ++b)
     {
-        st = add_total(nc, rule->body[b].arity);
-        if (st != DATALOG89_OK)
-        {
-            return st;
-        }
+        arity_total = add_cols(arity_total, rule, b);
+    }
+    st = mul_total(nv_rule, arity_total, &prod);
+    if (st != DATALOG89_OK)
+    {
+        return st;
+    }
+    st = add_total(nc, prod);
+    if (st != DATALOG89_OK)
+    {
+        return st;
     }
     return DATALOG89_OK;
 }
@@ -869,13 +967,13 @@ static void bind_set_constant(struct datalog89_priv_bind *dst,
 }
 
 static void bind_write(struct datalog89_priv_bind *dst,
-                       const datalog89_priv_crule *rule, size_t atom,
-                       size_t col)
+                       const datalog89_priv_crule *rule,
+                       const unsigned char *bound, size_t atom, size_t col)
 {
     const datalog89_priv_cterm *term;
 
     term = body_term(rule, atom, col);
-    dst->kind = (unsigned char)bind_kind_of(rule, atom, col, term);
+    dst->kind = (unsigned char)bind_kind_of(rule, bound, atom, col, term);
     dst->slot = 0;
     dst->constant = 0;
     if (term->kind == DATALOG89_TERM_VAR)
@@ -887,13 +985,14 @@ static void bind_write(struct datalog89_priv_bind *dst,
 }
 
 static void cols_write(struct datalog89_priv_plan *plan, size_t off,
-                       const datalog89_priv_crule *rule, size_t atom)
+                       const datalog89_priv_crule *rule,
+                       const unsigned char *bound, size_t atom)
 {
     size_t p;
 
     for (p = 0; p < rule->body[atom].arity; ++p)
     {
-        bind_write(&plan->cols[off + p], rule, atom, p);
+        bind_write(&plan->cols[off + p], rule, bound, atom, p);
     }
 }
 
@@ -907,17 +1006,80 @@ static void step_write(struct datalog89_priv_plan *plan, size_t index,
     plan->steps[index].source = source;
 }
 
-static void variant_steps(struct datalog89_priv_plan *plan, size_t step_off,
-                          const datalog89_priv_crule *rule, size_t col_base,
-                          size_t delta_pos)
+static void bound_add_term(unsigned char *bound,
+                           const datalog89_priv_cterm *term)
 {
-    size_t s;
-
-    for (s = 0; s < rule->body_count; ++s)
+    if (term->kind == DATALOG89_TERM_VAR)
     {
-        step_write(plan, step_off + s, rule, s,
-                   col_base + atom_col_off(rule, s), source_of(s, delta_pos));
+        bound[term->slot] = 1;
     }
+}
+
+static void bound_add_atom(const datalog89_priv_crule *rule,
+                           unsigned char *bound, size_t atom)
+{
+    size_t p;
+
+    for (p = 0; p < rule->body[atom].arity; ++p)
+    {
+        bound_add_term(bound, body_term(rule, atom, p));
+    }
+}
+
+static void clear_slots(const datalog89_priv_crule *rule, unsigned char *bound)
+{
+    size_t i;
+
+    for (i = 0; i < rule->var_count; ++i)
+    {
+        bound[i] = 0;
+    }
+}
+
+static void clear_used(const datalog89_priv_crule *rule, unsigned char *used)
+{
+    size_t i;
+
+    for (i = 0; i < rule->body_count; ++i)
+    {
+        used[i] = 0;
+    }
+}
+
+GREEN_PURE
+static size_t first_round(size_t j)
+{
+    if (j == 0)
+    {
+        return 1;
+    }
+    return 0;
+}
+
+/* Place one step: pick the next atom (the delta atom leads on the first
+ * round, then most-bound-first with constant tiebreak), write its step and
+ * static pattern, and return the next column offset. */
+static size_t step_place(const datalog89_priv_crule *rule,
+                         struct datalog89_priv_plan *plan, size_t step_index,
+                         size_t col_off, size_t delta_pos, size_t first,
+                         unsigned char *bound, unsigned char *used)
+{
+    size_t atom;
+
+    if (first != 0)
+    {
+        atom = pick_atom(rule, bound, used, delta_pos);
+    }
+    else
+    {
+        atom = pick_atom(rule, bound, used, rule->body_count);
+    }
+    step_write(plan, step_index, rule, atom, col_off,
+               source_of(atom, delta_pos));
+    cols_write(plan, col_off, rule, bound, atom);
+    used[atom] = 1;
+    bound_add_atom(rule, bound, atom);
+    return col_off + rule->body[atom].arity;
 }
 
 static void variant_write(struct datalog89_priv_plan *plan, size_t index,
@@ -932,40 +1094,39 @@ static void variant_write(struct datalog89_priv_plan *plan, size_t index,
     plan->variants[index].delta_pos = delta_pos;
 }
 
-static void variant_emit(const datalog89_eval *eval,
+static void variant_emit(const datalog89_priv_crule *rule,
                          struct datalog89_priv_plan *plan, size_t rule_index,
-                         size_t *variant_off, size_t *step_off, size_t col_base,
-                         size_t delta_pos)
+                         size_t *variant_off, size_t *step_off, size_t *col_off,
+                         size_t delta_pos, unsigned char *bound,
+                         unsigned char *used)
 {
-    const datalog89_priv_crule *rule;
+    size_t j;
+    size_t col_run;
 
-    rule = &eval->rules[rule_index];
     variant_write(plan, *variant_off, rule_index, rule, *step_off, delta_pos);
-    variant_steps(plan, *step_off, rule, col_base, delta_pos);
+    clear_slots(rule, bound);
+    clear_used(rule, used);
+    col_run = *col_off;
+    for (j = 0; j < rule->body_count; ++j)
+    {
+        col_run = step_place(rule, plan, *step_off + j, col_run, delta_pos,
+                             first_round(j), bound, used);
+    }
     *variant_off = *variant_off + 1;
     *step_off = *step_off + rule->body_count;
-}
-
-static void cols_step(struct datalog89_priv_plan *plan,
-                      const datalog89_priv_crule *rule, size_t b,
-                      size_t *col_off, size_t *rule_cols)
-{
-    cols_write(plan, *col_off + *rule_cols, rule, b);
-    *rule_cols = add_cols(*rule_cols, rule, b);
+    *col_off = col_run;
 }
 
 static void build_rule(const datalog89_eval *eval,
                        struct datalog89_priv_plan *plan,
                        const struct rel_tab *tab, const size_t *comp,
                        const unsigned char *comp_rec, size_t rule_index,
-                       size_t *variant_off, size_t *step_off, size_t *col_off)
+                       size_t *variant_off, size_t *step_off, size_t *col_off,
+                       unsigned char *bound, unsigned char *used)
 {
     const datalog89_priv_crule *rule;
     size_t k;
-    size_t b;
     size_t p;
-    size_t col_base;
-    size_t rule_cols;
     size_t scc;
     int rec;
 
@@ -973,21 +1134,14 @@ static void build_rule(const datalog89_eval *eval,
     k = rule->body_count;
     scc = head_scc(tab, comp, rule);
     rec = (int)comp_rec[scc];
-    col_base = *col_off;
-    rule_cols = 0;
-    for (b = 0; b < k; ++b)
-    {
-        cols_step(plan, rule, b, col_off, &rule_cols);
-    }
-    *col_off = sum(*col_off, rule_cols);
     for (p = 0; p < k + 1; ++p)
     {
         if (position_skip(eval, tab, comp, rule_index, p, rec) != 0)
         {
             continue;
         }
-        variant_emit(eval, plan, rule_index, variant_off, step_off, col_base,
-                     p);
+        variant_emit(rule, plan, rule_index, variant_off, step_off, col_off, p,
+                     bound, used);
     }
 }
 
@@ -1003,7 +1157,8 @@ static void build_scc(const datalog89_eval *eval,
                       const struct rel_tab *tab, const size_t *comp,
                       const unsigned char *comp_rec, const size_t *rule_scc,
                       size_t scc_index, size_t *variant_off, size_t *step_off,
-                      size_t *col_off)
+                      size_t *col_off, unsigned char *bound,
+                      unsigned char *used)
 {
     size_t r;
 
@@ -1016,7 +1171,7 @@ static void build_scc(const datalog89_eval *eval,
             continue;
         }
         build_rule(eval, plan, tab, comp, comp_rec, r, variant_off, step_off,
-                   col_off);
+                   col_off, bound, used);
     }
     plan->sccs[scc_index].nvariants =
         plan_scc_count(plan, scc_index, *variant_off);
@@ -1050,20 +1205,78 @@ static int rule_scc_build(const datalog89_eval *eval, const struct rel_tab *tab,
 
 static void build_temps_free(struct rel_tab *tab, unsigned char *adj,
                              size_t *comp, unsigned char *comp_rec,
-                             size_t *rule_scc)
+                             size_t *rule_scc, unsigned char *bound,
+                             unsigned char *used)
 {
     rel_tab_free(tab);
     datalog89_priv_mem_free(adj);
     datalog89_priv_mem_free(comp);
     datalog89_priv_mem_free(comp_rec);
     datalog89_priv_mem_free(rule_scc);
+    datalog89_priv_mem_free(bound);
+    datalog89_priv_mem_free(used);
+}
+
+GREEN_PURE
+static size_t max_rule_var(const datalog89_eval *eval)
+{
+    size_t r;
+    size_t max;
+
+    max = 0;
+    for (r = 0; r < eval->rule_count; ++r)
+    {
+        max = max_of(max, eval->rules[r].var_count);
+    }
+    return max;
+}
+
+GREEN_PURE
+static size_t max_rule_body(const datalog89_eval *eval)
+{
+    size_t r;
+    size_t max;
+
+    max = 0;
+    for (r = 0; r < eval->rule_count; ++r)
+    {
+        max = max_of(max, eval->rules[r].body_count);
+    }
+    return max;
+}
+
+static int scratch_alloc(const datalog89_eval *eval, unsigned char **bound,
+                         unsigned char **used)
+{
+    size_t max_var;
+    size_t max_body;
+
+    max_var = max_rule_var(eval);
+    max_body = max_rule_body(eval);
+    if (max_var != 0)
+    {
+        *bound = alloc_count(max_var, 1);
+        if (*bound == NULL)
+        {
+            return DATALOG89_ENOMEM;
+        }
+    }
+    if (max_body != 0)
+    {
+        *used = alloc_count(max_body, 1);
+        if (*used == NULL)
+        {
+            return DATALOG89_ENOMEM;
+        }
+    }
+    return DATALOG89_OK;
 }
 
 static void plan_layout(const datalog89_eval *eval,
                         struct datalog89_priv_plan *plan,
                         const struct rel_tab *tab, const size_t *comp,
                         const unsigned char *comp_rec, const size_t *rule_scc,
-                        size_t ncomp)
+                        size_t ncomp, unsigned char *bound, unsigned char *used)
 {
     size_t variant_off;
     size_t step_off;
@@ -1076,7 +1289,7 @@ static void plan_layout(const datalog89_eval *eval,
     for (s = 0; s < ncomp; ++s)
     {
         build_scc(eval, plan, tab, comp, comp_rec, rule_scc, s, &variant_off,
-                  &step_off, &col_off);
+                  &step_off, &col_off, bound, used);
     }
 }
 
@@ -1088,6 +1301,8 @@ int datalog89_priv_plan_build(datalog89_eval *eval)
     unsigned char *comp_rec;
     size_t ncomp;
     size_t *rule_scc;
+    unsigned char *bound;
+    unsigned char *used;
     struct datalog89_priv_plan plan;
     size_t nv;
     size_t ns;
@@ -1101,6 +1316,8 @@ int datalog89_priv_plan_build(datalog89_eval *eval)
     comp_rec = NULL;
     ncomp = 0;
     rule_scc = NULL;
+    bound = NULL;
+    used = NULL;
     st = rels_collect(eval, &tab);
     if (st == DATALOG89_OK)
     {
@@ -1124,9 +1341,14 @@ int datalog89_priv_plan_build(datalog89_eval *eval)
     }
     if (st == DATALOG89_OK)
     {
-        plan_layout(eval, &plan, &tab, comp, comp_rec, rule_scc, ncomp);
+        st = scratch_alloc(eval, &bound, &used);
     }
-    build_temps_free(&tab, adj, comp, comp_rec, rule_scc);
+    if (st == DATALOG89_OK)
+    {
+        plan_layout(eval, &plan, &tab, comp, comp_rec, rule_scc, ncomp, bound,
+                    used);
+    }
+    build_temps_free(&tab, adj, comp, comp_rec, rule_scc, bound, used);
     if (st != DATALOG89_OK)
     {
         datalog89_priv_plan_free(&plan);

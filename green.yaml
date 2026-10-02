@@ -48,11 +48,8 @@ pure_functions:
     - relation_is_idb
     - cap_double
     - add_cols
-    - sum
-    - atom_col_off
     - source_of
     - body_term
-    - slot_bound_prev_atom
     - slot_bound_same_atom
     - bind_kind_of
     - add_bound
@@ -72,3 +69,11 @@ pure_functions:
     - add_one
     - plan_scc_count
     - variant_recursive
+    - score_col
+    - atom_score
+    - atom_const
+    - cand_better
+    - first_round
+    - max_of
+    - max_rule_var
+    - max_rule_body

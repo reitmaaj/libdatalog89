@@ -36,6 +36,7 @@ struct ref_store
     unsigned long seed;
     unsigned long scan_opens;
     unsigned long scan_closes;
+    unsigned long scan_nexts;
     unsigned long insert_calls;
     unsigned long new_inserts;
 };
@@ -241,6 +242,7 @@ static int ref_store_scan_next(void *ctx, datalog89_scan *scan_ptr,
 
     (void)ctx;
     scan = scan_ptr;
+    scan->store->scan_nexts = scan->store->scan_nexts + 1;
     if (scan->pos >= scan->count)
     {
         *found = 0;
@@ -287,6 +289,7 @@ ref_store *ref_store_new(void)
     store->seed = 1;
     store->scan_opens = 0;
     store->scan_closes = 0;
+    store->scan_nexts = 0;
     store->insert_calls = 0;
     store->new_inserts = 0;
     return store;
@@ -415,6 +418,11 @@ unsigned long ref_store_scan_opens(const ref_store *store)
 unsigned long ref_store_scan_closes(const ref_store *store)
 {
     return store->scan_closes;
+}
+
+unsigned long ref_store_scan_nexts(const ref_store *store)
+{
+    return store->scan_nexts;
 }
 
 unsigned long ref_store_insert_calls(const ref_store *store)

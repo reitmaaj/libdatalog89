@@ -399,11 +399,160 @@ static void test_constant_pattern(void)
     seed2(eval, R_SAME, C_B, C_A);
     seed2(eval, R_Q, C_A, C_B);
     T_STATUS(datalog89_eval_run(eval), DATALOG89_OK);
-    check_step(eval, 0, 0, R_Q, 2, DATALOG89_TEST_SRC_FULL, 0, 0);
-    check_step(eval, 0, 1, R_SAME, 2, DATALOG89_TEST_SRC_FULL, 1, 1);
+    check_step(eval, 0, 0, R_SAME, 2, DATALOG89_TEST_SRC_FULL, 0, 1);
+    check_step(eval, 0, 1, R_Q, 2, DATALOG89_TEST_SRC_FULL, 1, 0);
     pair[0] = C_A;
     pair[1] = C_A;
     expect_tuple(store, R_JOINED, 2, pair);
+    datalog89_eval_destroy(eval);
+    ref_store_free(store);
+}
+
+/* p(X,Z) :- q(X,Y), p(Y,Z): the recursive atom sits at body position 1.
+ * The delta variant must lead with p and scan q with Y bound, so the full q
+ * relation is never rescanned per delta tuple. */
+static void test_delta_first(void)
+{
+    ref_store *store;
+    datalog89_eval *eval;
+    datalog89_rule rule;
+    datalog89_term terms[6];
+    datalog89_atom atoms[3];
+    datalog89_test_variant_info v;
+    datalog89_const pair[2];
+    size_t i;
+
+    store = ref_store_new();
+    eval = make_eval(store);
+    mk_var(&terms[0], V_X);
+    mk_var(&terms[1], V_Z);
+    mk_var(&terms[2], V_X);
+    mk_var(&terms[3], V_Y);
+    mk_var(&terms[4], V_Y);
+    mk_var(&terms[5], V_Z);
+    mk_atom(&atoms[0], R_P, 2, &terms[0]);
+    mk_atom(&atoms[1], R_Q, 2, &terms[2]);
+    mk_atom(&atoms[2], R_P, 2, &terms[4]);
+    mk_rule(&rule, &atoms[0], 2, &atoms[1]);
+    T_STATUS(datalog89_eval_add_rule(eval, &rule), DATALOG89_OK);
+    for (i = 0; i < 40; ++i)
+    {
+        seed2(eval, R_Q, C_A, (datalog89_const)(1000 + i));
+        seed2(eval, R_P, (datalog89_const)(1000 + i),
+              (datalog89_const)(2000 + i));
+    }
+    T_STATUS(datalog89_eval_run(eval), DATALOG89_OK);
+    T_EQ_SIZE(datalog89_test_plan_variant_count(eval), 2);
+    T_STATUS(datalog89_test_plan_variant_info(eval, 0, &v), DATALOG89_OK);
+    T_EQ_SIZE(v.head, R_P);
+    T_EQ_SIZE(v.delta_pos, 1);
+    T_EQ_SIZE((size_t)v.recursive, 1);
+    check_step(eval, 0, 0, R_P, 2, DATALOG89_TEST_SRC_DELTA, 0, 0);
+    check_step(eval, 0, 1, R_Q, 2, DATALOG89_TEST_SRC_FULL, 1, 0);
+    T_STATUS(datalog89_test_plan_variant_info(eval, 1, &v), DATALOG89_OK);
+    T_EQ_SIZE(v.delta_pos, 2);
+    check_step(eval, 1, 0, R_Q, 2, DATALOG89_TEST_SRC_FULL, 0, 0);
+    check_step(eval, 1, 1, R_P, 2, DATALOG89_TEST_SRC_FULL, 1, 0);
+    expect_count(store, R_P, 2, 80);
+    pair[0] = C_A;
+    pair[1] = 2000;
+    expect_tuple(store, R_P, 2, pair);
+    pair[1] = 2039;
+    expect_tuple(store, R_P, 2, pair);
+    T_ASSERT(ref_store_scan_nexts(store) < 500);
+    datalog89_eval_destroy(eval);
+    ref_store_free(store);
+}
+
+/* r(Z,X) :- a(X), b(Y), c(X,Y), d(Y,Z): the greedy picks the atom with the
+ * most bound columns, yielding a, c, b, d instead of body order. */
+static void test_greedy_order(void)
+{
+    ref_store *store;
+    datalog89_eval *eval;
+    datalog89_rule rule;
+    datalog89_term terms[8];
+    datalog89_atom atoms[5];
+    datalog89_const pair[2];
+
+    store = ref_store_new();
+    eval = make_eval(store);
+    mk_var(&terms[0], V_Z);
+    mk_var(&terms[1], V_X);
+    mk_var(&terms[2], V_X);
+    mk_var(&terms[3], V_Y);
+    mk_var(&terms[4], V_X);
+    mk_var(&terms[5], V_Y);
+    mk_var(&terms[6], V_Y);
+    mk_var(&terms[7], V_Z);
+    mk_atom(&atoms[0], R_P, 2, &terms[0]);
+    mk_atom(&atoms[1], R_LEFT, 1, &terms[2]);
+    mk_atom(&atoms[2], R_RIGHT, 1, &terms[3]);
+    mk_atom(&atoms[3], R_JOINED, 2, &terms[4]);
+    mk_atom(&atoms[4], R_SAME, 2, &terms[6]);
+    mk_rule(&rule, &atoms[0], 4, &atoms[1]);
+    T_STATUS(datalog89_eval_add_rule(eval, &rule), DATALOG89_OK);
+    seed1(eval, R_LEFT, C_A);
+    seed1(eval, R_RIGHT, C_B);
+    seed2(eval, R_JOINED, C_A, C_B);
+    seed2(eval, R_SAME, C_B, C_C);
+    T_STATUS(datalog89_eval_run(eval), DATALOG89_OK);
+    check_step(eval, 0, 0, R_LEFT, 1, DATALOG89_TEST_SRC_FULL, 0, 0);
+    check_step(eval, 0, 1, R_JOINED, 2, DATALOG89_TEST_SRC_FULL, 1, 0);
+    check_step(eval, 0, 2, R_RIGHT, 1, DATALOG89_TEST_SRC_FULL, 1, 0);
+    check_step(eval, 0, 3, R_SAME, 2, DATALOG89_TEST_SRC_FULL, 1, 0);
+    pair[0] = C_C;
+    pair[1] = C_A;
+    expect_tuple(store, R_P, 2, pair);
+    datalog89_eval_destroy(eval);
+    ref_store_free(store);
+}
+
+/* v(X) :- w(X) and w(X) :- s(X), t(A), v(X): one SCC. In the w-rule's delta
+ * variant the forced v step binds X, then t(A) and s(X) both observe one
+ * bound column; the constant tiebreak puts t before s. */
+static void test_const_tiebreak(void)
+{
+    ref_store *store;
+    datalog89_eval *eval;
+    datalog89_rule rules[2];
+    datalog89_term terms[6];
+    datalog89_atom atoms[6];
+    datalog89_test_variant_info v;
+    datalog89_const a[1];
+
+    store = ref_store_new();
+    eval = make_eval(store);
+    mk_var(&terms[0], V_X);
+    mk_var(&terms[1], V_X);
+    mk_atom(&atoms[0], R_R, 1, &terms[0]);
+    mk_atom(&atoms[1], R_Q, 1, &terms[1]);
+    mk_rule(&rules[0], &atoms[0], 1, &atoms[1]);
+    mk_var(&terms[2], V_X);
+    mk_var(&terms[3], V_X);
+    mk_const(&terms[4], C_A);
+    mk_var(&terms[5], V_X);
+    mk_atom(&atoms[2], R_Q, 1, &terms[2]);
+    mk_atom(&atoms[3], R_SAME, 1, &terms[3]);
+    mk_atom(&atoms[4], R_LEFT, 1, &terms[4]);
+    mk_atom(&atoms[5], R_R, 1, &terms[5]);
+    mk_rule(&rules[1], &atoms[2], 3, &atoms[3]);
+    T_STATUS(datalog89_eval_add_rule(eval, &rules[0]), DATALOG89_OK);
+    T_STATUS(datalog89_eval_add_rule(eval, &rules[1]), DATALOG89_OK);
+    seed1(eval, R_R, C_A);
+    seed1(eval, R_SAME, C_A);
+    seed1(eval, R_LEFT, C_A);
+    T_STATUS(datalog89_eval_run(eval), DATALOG89_OK);
+    T_EQ_SIZE(datalog89_test_plan_variant_count(eval), 4);
+    T_STATUS(datalog89_test_plan_variant_info(eval, 2, &v), DATALOG89_OK);
+    T_EQ_SIZE(v.head, R_Q);
+    T_EQ_SIZE(v.delta_pos, 2);
+    T_EQ_SIZE((size_t)v.recursive, 1);
+    check_step(eval, 2, 0, R_R, 1, DATALOG89_TEST_SRC_DELTA, 0, 0);
+    check_step(eval, 2, 1, R_LEFT, 1, DATALOG89_TEST_SRC_FULL, 0, 1);
+    check_step(eval, 2, 2, R_SAME, 1, DATALOG89_TEST_SRC_FULL, 1, 0);
+    a[0] = C_A;
+    expect_tuple(store, R_Q, 1, a);
     datalog89_eval_destroy(eval);
     ref_store_free(store);
 }
@@ -609,6 +758,9 @@ int main(void)
     test_mutual_scc();
     test_scc_chain();
     test_constant_pattern();
+    test_delta_first();
+    test_greedy_order();
+    test_const_tiebreak();
     test_hook_validation();
     test_plan_immutable_and_deterministic();
     test_zero_body_rule();

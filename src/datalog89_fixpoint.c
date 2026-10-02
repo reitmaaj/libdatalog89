@@ -301,7 +301,9 @@ static int run_variant(datalog89_eval *eval,
     int st;
 
     variant = &plan->variants[variant_index];
-    step = &plan->steps[variant->first_step + variant->delta_pos];
+    /* The DELTA step always leads its variant (plan scenario PL-8), so the
+     * delta relation and arity come from the variant's first step. */
+    step = &plan->steps[variant->first_step];
     facts = datalog89_priv_delta_find(delta, step->relation, step->arity);
     if (facts == NULL)
     {

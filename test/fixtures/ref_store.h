@@ -31,6 +31,7 @@ void ref_store_dump(const ref_store *store, FILE *out);
 
 unsigned long ref_store_scan_opens(const ref_store *store);
 unsigned long ref_store_scan_closes(const ref_store *store);
+unsigned long ref_store_scan_nexts(const ref_store *store);
 unsigned long ref_store_insert_calls(const ref_store *store);
 unsigned long ref_store_new_inserts(const ref_store *store);
 
