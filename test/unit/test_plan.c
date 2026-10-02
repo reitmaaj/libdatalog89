@@ -750,6 +750,51 @@ static void test_zero_body_rule(void)
     ref_store_free(store);
 }
 
+/* PL-18: a chain join over 40 body atoms evaluates exactly; the evaluator
+ * walks an explicit frame stack, so body length is not bounded by the C
+ * call stack. */
+static void test_long_body(void)
+{
+    ref_store *store;
+    datalog89_eval *eval;
+    datalog89_rule rule;
+    datalog89_term head_terms[2];
+    datalog89_term body_terms[80];
+    datalog89_atom head;
+    datalog89_atom body[40];
+    datalog89_const pair[2];
+    size_t i;
+
+    store = ref_store_new();
+    eval = make_eval(store);
+    mk_var(&head_terms[0], (datalog89_var)1);
+    mk_var(&head_terms[1], (datalog89_var)41);
+    for (i = 0; i < 40; ++i)
+    {
+        mk_var(&body_terms[2 * i], (datalog89_var)(i + 1));
+        mk_var(&body_terms[2 * i + 1], (datalog89_var)(i + 2));
+        mk_atom(&body[i], (datalog89_rel)(9000 + i), 2, &body_terms[2 * i]);
+    }
+    mk_atom(&head, 8999, 2, head_terms);
+    mk_rule(&rule, &head, 40, body);
+    T_STATUS(datalog89_eval_add_rule(eval, &rule), DATALOG89_OK);
+    for (i = 0; i < 40; ++i)
+    {
+        pair[0] = (datalog89_const)i;
+        pair[1] = (datalog89_const)(i + 1);
+        T_STATUS(
+            datalog89_eval_add_fact(eval, (datalog89_rel)(9000 + i), 2, pair),
+            DATALOG89_OK);
+    }
+    T_STATUS(datalog89_eval_run(eval), DATALOG89_OK);
+    pair[0] = 0;
+    pair[1] = 40;
+    expect_tuple(store, 8999, 2, pair);
+    expect_count(store, 8999, 2, 1);
+    datalog89_eval_destroy(eval);
+    ref_store_free(store);
+}
+
 int main(void)
 {
     test_plan_cache();
@@ -764,6 +809,7 @@ int main(void)
     test_hook_validation();
     test_plan_immutable_and_deterministic();
     test_zero_body_rule();
+    test_long_body();
     if (datalog89_test_failures == 0)
     {
         return 0;

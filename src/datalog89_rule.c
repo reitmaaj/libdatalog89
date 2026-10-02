@@ -4,6 +4,8 @@
  * delegate to workers; pure helpers carry GREEN_PURE so they may appear in
  * expression position. */
 
+#include <string.h>
+
 #include "datalog89_priv.h"
 
 /* --- pure structural helpers ------------------------------------------- */
@@ -301,6 +303,7 @@ static void crule_init(datalog89_priv_crule *rule)
     rule->tuple = NULL;
     rule->tuple_cap = 0;
     rule->bound_log = NULL;
+    rule->frames = NULL;
 }
 
 static void init_catom(datalog89_priv_catom *atom)
@@ -326,6 +329,7 @@ void datalog89_priv_crule_release(datalog89_priv_crule *rule)
     datalog89_priv_mem_free(rule->bvalues);
     datalog89_priv_mem_free(rule->tuple);
     datalog89_priv_mem_free(rule->bound_log);
+    datalog89_priv_mem_free(rule->frames);
     crule_init(rule);
 }
 
@@ -540,6 +544,15 @@ static int alloc_scratch(datalog89_priv_crule *out, size_t max_arity)
     if (out->bound_log == NULL)
     {
         return DATALOG89_ENOMEM;
+    }
+    if (out->body_count != 0)
+    {
+        out->frames = alloc_array(out->body_count, sizeof(*out->frames));
+        if (out->frames == NULL)
+        {
+            return DATALOG89_ENOMEM;
+        }
+        memset(out->frames, 0, out->body_count * sizeof(*out->frames));
     }
     out->tuple_cap = max_arity;
     return DATALOG89_OK;

@@ -1,20 +1,14 @@
 /* datalog89_join.c - plan-driven body joins, unification, head emission.
  *
- * A variant is a fixed sequence of steps. Each step either scans the store
- * or iterates the previous round's delta, unifies candidate tuples against
- * the step's static binding pattern, and recurses into the next step. The
- * binding pattern is precomputed at plan build time, so the evaluator never
- * re-derives which positions are bound. Written to the green
+ * A variant is walked with an explicit frame stack: one frame per step
+ * level, each holding an open store scan or a delta cursor. A frame fetches
+ * one candidate tuple at a time, unifies it against the step's static
+ * binding pattern, and descends on success. The machine never recurses in
+ * C, so body length is independent of the call stack. Written to the green
  * worker/controller discipline. */
 
 #include "datalog89_priv.h"
 #include "datalog89_priv_plan.h"
-
-static int eval_step(datalog89_eval *eval, datalog89_priv_crule *rule,
-                     const struct datalog89_priv_plan *plan,
-                     const struct datalog89_priv_variant *variant, size_t index,
-                     datalog89_priv_delta_table *sink,
-                     const datalog89_priv_delta *delta);
 
 /* --- pure value workers ------------------------------------------------- */
 
@@ -34,6 +28,33 @@ static const datalog89_const *delta_tuple_at(const datalog89_priv_delta *delta,
                                              size_t arity, size_t index)
 {
     return delta->tuples + index * arity;
+}
+
+/* --- environment rollback ---------------------------------------------- */
+
+static void unbind_one(datalog89_priv_crule *rule, size_t slot)
+{
+    rule->bound[slot] = 0;
+}
+
+static void unbind(datalog89_priv_crule *rule, size_t *log, size_t count)
+{
+    size_t i;
+
+    for (i = 0; i < count; ++i)
+    {
+        unbind_one(rule, log[i]);
+    }
+}
+
+static void clear_bound(datalog89_priv_crule *rule)
+{
+    size_t i;
+
+    for (i = 0; i < rule->var_count; ++i)
+    {
+        unbind_one(rule, i);
+    }
 }
 
 /* --- scan pattern filling ----------------------------------------------- */
@@ -78,33 +99,6 @@ static void fill_values(datalog89_priv_crule *rule,
     for (p = 0; p < arity; ++p)
     {
         fill_one(rule, &cols[p], p);
-    }
-}
-
-/* --- environment rollback ---------------------------------------------- */
-
-static void unbind_one(datalog89_priv_crule *rule, size_t slot)
-{
-    rule->bound[slot] = 0;
-}
-
-static void unbind(datalog89_priv_crule *rule, size_t *log, size_t count)
-{
-    size_t i;
-
-    for (i = 0; i < count; ++i)
-    {
-        unbind_one(rule, log[i]);
-    }
-}
-
-static void clear_bound(datalog89_priv_crule *rule)
-{
-    size_t i;
-
-    for (i = 0; i < rule->var_count; ++i)
-    {
-        unbind_one(rule, i);
     }
 }
 
@@ -253,120 +247,160 @@ static int open_scan(datalog89_eval *eval,
     return DATALOG89_OK;
 }
 
-static int scan_one(datalog89_eval *eval, datalog89_priv_crule *rule,
-                    const struct datalog89_priv_plan *plan,
-                    const struct datalog89_priv_variant *variant, size_t index,
-                    const struct datalog89_priv_bind *cols, size_t arity,
-                    datalog89_scan *scan, datalog89_priv_delta_table *sink,
-                    const datalog89_priv_delta *delta, int *done)
+/* --- frame stack -------------------------------------------------------- */
+
+static int frame_start(datalog89_eval *eval, datalog89_priv_crule *rule,
+                       const struct datalog89_priv_plan *plan,
+                       const struct datalog89_priv_variant *variant,
+                       size_t level, struct datalog89_priv_frame *frame)
 {
-    size_t *log;
-    size_t bound_count;
-    int matched;
-    int found;
-    int rc;
+    const struct datalog89_priv_step *step;
     int st;
 
-    *done = 0;
+    frame->scan = NULL;
+    frame->next_delta = 0;
+    frame->bound_count = 0;
+    frame->in_delta = 0;
+    frame->has_tuple = 0;
+    step = &plan->steps[variant->first_step + level];
+    if (step->source == DATALOG89_PRIV_SRC_DELTA)
+    {
+        frame->in_delta = 1;
+        return DATALOG89_OK;
+    }
+    fill_values(rule, &plan->cols[step->col_off], step->arity);
+    st = open_scan(eval, step, rule, &frame->scan);
+    return st;
+}
+
+static void frame_unbind_state(datalog89_priv_crule *rule, size_t level,
+                               struct datalog89_priv_frame *frame)
+{
+    if (frame->has_tuple == 0)
+    {
+        return;
+    }
+    unbind(rule, rule->bound_log + level * rule->tuple_cap, frame->bound_count);
+    frame->has_tuple = 0;
+}
+
+static void frame_delta_advance(struct datalog89_priv_frame *frame)
+{
+    frame->next_delta = frame->next_delta + 1;
+}
+
+static void frame_delta_take(const struct datalog89_priv_step *step,
+                             struct datalog89_priv_frame *frame,
+                             const datalog89_priv_delta *delta,
+                             const datalog89_const **tuple, int *ready)
+{
+    if (frame->next_delta == delta->count)
+    {
+        return;
+    }
+    *tuple = delta_tuple_at(delta, step->arity, frame->next_delta);
+    frame_delta_advance(frame);
+    *ready = 1;
+}
+
+static int frame_fetch(datalog89_eval *eval, datalog89_priv_crule *rule,
+                       const struct datalog89_priv_step *step,
+                       struct datalog89_priv_frame *frame,
+                       const datalog89_priv_delta *delta,
+                       const datalog89_const **tuple, int *ready)
+{
+    int found;
+    int rc;
+
+    *ready = 0;
+    if (frame->in_delta != 0)
+    {
+        frame_delta_take(step, frame, delta, tuple, ready);
+        return DATALOG89_OK;
+    }
     found = 0;
-    rc = eval->store.ops->scan_next(eval->store.ctx, scan, rule->tuple, &found);
+    rc = eval->store.ops->scan_next(eval->store.ctx, frame->scan, rule->tuple,
+                                    &found);
     if (rc != 0)
     {
         return DATALOG89_ESTORE;
     }
     if (found == 0)
     {
-        *done = 1;
         return DATALOG89_OK;
     }
-    bound_count = 0;
-    matched = 0;
-    log = rule->bound_log + index * rule->tuple_cap;
-    unify_cols(rule, cols, arity, rule->tuple, log, &bound_count, &matched);
-    st = DATALOG89_OK;
-    if (matched != 0)
-    {
-        st = eval_step(eval, rule, plan, variant, index + 1, sink, delta);
-    }
-    unbind(rule, log, bound_count);
-    return st;
+    *tuple = rule->tuple;
+    *ready = 1;
+    return DATALOG89_OK;
 }
 
-static int scan_step(datalog89_eval *eval, datalog89_priv_crule *rule,
-                     const struct datalog89_priv_plan *plan,
-                     const struct datalog89_priv_variant *variant, size_t index,
-                     const struct datalog89_priv_step *step,
-                     const struct datalog89_priv_bind *cols,
-                     datalog89_priv_delta_table *sink,
-                     const datalog89_priv_delta *delta)
+static void frame_accept(struct datalog89_priv_frame *frame, size_t bound_count)
 {
-    datalog89_scan *scan;
-    int done;
+    frame->bound_count = bound_count;
+    frame->has_tuple = 1;
+}
+
+/* Fetch one candidate tuple and unify it. done is set when the frame either
+ * matched a tuple or ran out of tuples; it stays clear when a candidate
+ * failed unification, so the caller keeps advancing. */
+static int frame_take(datalog89_eval *eval, datalog89_priv_crule *rule,
+                      const struct datalog89_priv_step *step,
+                      const struct datalog89_priv_bind *cols,
+                      struct datalog89_priv_frame *frame,
+                      const datalog89_priv_delta *delta, size_t *log,
+                      int *matched, int *done)
+{
+    const datalog89_const *tuple;
+    size_t bound_count;
+    int ready;
     int st;
 
-    fill_values(rule, cols, step->arity);
-    scan = NULL;
-    st = open_scan(eval, step, rule, &scan);
+    *matched = 0;
+    *done = 1;
+    tuple = NULL;
+    st = frame_fetch(eval, rule, step, frame, delta, &tuple, &ready);
     if (st != DATALOG89_OK)
     {
         return st;
     }
+    if (ready == 0)
+    {
+        return DATALOG89_OK;
+    }
+    bound_count = 0;
+    unify_cols(rule, cols, step->arity, tuple, log, &bound_count, matched);
+    if (*matched != 0)
+    {
+        frame_accept(frame, bound_count);
+        return DATALOG89_OK;
+    }
+    unbind(rule, log, bound_count);
+    *done = 0;
+    return DATALOG89_OK;
+}
+
+static int frame_next(datalog89_eval *eval, datalog89_priv_crule *rule,
+                      const struct datalog89_priv_plan *plan,
+                      const struct datalog89_priv_variant *variant,
+                      size_t level, struct datalog89_priv_frame *frame,
+                      const datalog89_priv_delta *delta, int *matched)
+{
+    const struct datalog89_priv_step *step;
+    const struct datalog89_priv_bind *cols;
+    size_t *log;
+    int done;
+    int st;
+
+    *matched = 0;
+    step = &plan->steps[variant->first_step + level];
+    cols = &plan->cols[step->col_off];
+    log = rule->bound_log + level * rule->tuple_cap;
+    frame_unbind_state(rule, level, frame);
     done = 0;
     while (done == 0)
     {
-        st = scan_one(eval, rule, plan, variant, index, cols, step->arity, scan,
-                      sink, delta, &done);
-        if (st != DATALOG89_OK)
-        {
-            break;
-        }
-    }
-    eval->store.ops->scan_close(eval->store.ctx, scan);
-    return st;
-}
-
-/* --- delta iteration ---------------------------------------------------- */
-
-static int delta_one(datalog89_eval *eval, datalog89_priv_crule *rule,
-                     const struct datalog89_priv_plan *plan,
-                     const struct datalog89_priv_variant *variant, size_t index,
-                     const struct datalog89_priv_bind *cols, size_t arity,
-                     datalog89_priv_delta_table *sink,
-                     const datalog89_priv_delta *delta,
-                     const datalog89_const *tuple)
-{
-    size_t *log;
-    size_t bound_count;
-    int matched;
-    int st;
-
-    bound_count = 0;
-    matched = 0;
-    log = rule->bound_log + index * rule->tuple_cap;
-    unify_cols(rule, cols, arity, tuple, log, &bound_count, &matched);
-    st = DATALOG89_OK;
-    if (matched != 0)
-    {
-        st = eval_step(eval, rule, plan, variant, index + 1, sink, delta);
-    }
-    unbind(rule, log, bound_count);
-    return st;
-}
-
-static int delta_step(datalog89_eval *eval, datalog89_priv_crule *rule,
-                      const struct datalog89_priv_plan *plan,
-                      const struct datalog89_priv_variant *variant,
-                      size_t index, const struct datalog89_priv_bind *cols,
-                      size_t arity, datalog89_priv_delta_table *sink,
-                      const datalog89_priv_delta *delta)
-{
-    size_t i;
-    int st;
-
-    for (i = 0; i < delta->count; ++i)
-    {
-        st = delta_one(eval, rule, plan, variant, index, cols, arity, sink,
-                       delta, delta_tuple_at(delta, arity, i));
+        st = frame_take(eval, rule, step, cols, frame, delta, log, matched,
+                        &done);
         if (st != DATALOG89_OK)
         {
             return st;
@@ -375,32 +409,133 @@ static int delta_step(datalog89_eval *eval, datalog89_priv_crule *rule,
     return DATALOG89_OK;
 }
 
-/* --- step recursion ----------------------------------------------------- */
-
-static int eval_step(datalog89_eval *eval, datalog89_priv_crule *rule,
-                     const struct datalog89_priv_plan *plan,
-                     const struct datalog89_priv_variant *variant, size_t index,
-                     datalog89_priv_delta_table *sink,
-                     const datalog89_priv_delta *delta)
+static void frame_finish(datalog89_eval *eval,
+                         struct datalog89_priv_frame *frame)
 {
-    const struct datalog89_priv_step *step;
-    const struct datalog89_priv_bind *cols;
+    if (frame->scan == NULL)
+    {
+        return;
+    }
+    eval->store.ops->scan_close(eval->store.ctx, frame->scan);
+    frame->scan = NULL;
+}
+
+static void frames_close(datalog89_eval *eval, datalog89_priv_crule *rule)
+{
+    size_t i;
+
+    for (i = 0; i < rule->body_count; ++i)
+    {
+        frame_finish(eval, &rule->frames[i]);
+    }
+}
+
+/* --- frame machine ------------------------------------------------------ */
+
+struct join_machine
+{
+    const struct datalog89_priv_plan *plan;
+    const struct datalog89_priv_variant *variant;
+    const datalog89_priv_delta *delta;
+    datalog89_priv_delta_table *sink;
+    size_t level;
+    int running;
+    int st;
+};
+
+static void machine_emit(datalog89_eval *eval, datalog89_priv_crule *rule,
+                         struct join_machine *m)
+{
+    m->st = emit_head(eval, rule, m->sink);
+    if (m->st != DATALOG89_OK)
+    {
+        m->running = 0;
+        return;
+    }
+    m->level = m->level - 1;
+}
+
+static void machine_ascend(datalog89_eval *eval, datalog89_priv_crule *rule,
+                           struct join_machine *m)
+{
+    frame_finish(eval, &rule->frames[m->level]);
+    if (m->level == 0)
+    {
+        m->running = 0;
+        return;
+    }
+    m->level = m->level - 1;
+}
+
+static void machine_descend(datalog89_eval *eval, datalog89_priv_crule *rule,
+                            struct join_machine *m)
+{
+    m->level = m->level + 1;
+    if (m->level == m->variant->nsteps)
+    {
+        return;
+    }
+    m->st = frame_start(eval, rule, m->plan, m->variant, m->level,
+                        &rule->frames[m->level]);
+    if (m->st != DATALOG89_OK)
+    {
+        m->running = 0;
+    }
+}
+
+static void machine_visit(datalog89_eval *eval, datalog89_priv_crule *rule,
+                          struct join_machine *m)
+{
+    int matched;
+
+    matched = 0;
+    m->st = frame_next(eval, rule, m->plan, m->variant, m->level,
+                       &rule->frames[m->level], m->delta, &matched);
+    if (m->st != DATALOG89_OK)
+    {
+        m->running = 0;
+        return;
+    }
+    if (matched != 0)
+    {
+        machine_descend(eval, rule, m);
+        return;
+    }
+    machine_ascend(eval, rule, m);
+}
+
+static void machine_step(datalog89_eval *eval, datalog89_priv_crule *rule,
+                         struct join_machine *m)
+{
+    if (m->level == m->variant->nsteps)
+    {
+        machine_emit(eval, rule, m);
+        return;
+    }
+    machine_visit(eval, rule, m);
+}
+
+static int machine_run(datalog89_eval *eval, datalog89_priv_crule *rule,
+                       const struct datalog89_priv_plan *plan,
+                       const struct datalog89_priv_variant *variant,
+                       datalog89_priv_delta_table *sink,
+                       const datalog89_priv_delta *delta)
+{
+    struct join_machine m;
     int st;
 
-    if (index == variant->nsteps)
+    m.plan = plan;
+    m.variant = variant;
+    m.delta = delta;
+    m.sink = sink;
+    m.level = 0;
+    m.running = 1;
+    m.st = DATALOG89_OK;
+    while (m.running != 0)
     {
-        st = emit_head(eval, rule, sink);
-        return st;
+        machine_step(eval, rule, &m);
     }
-    step = &plan->steps[variant->first_step + index];
-    cols = &plan->cols[step->col_off];
-    if (step->source == DATALOG89_PRIV_SRC_DELTA)
-    {
-        st = delta_step(eval, rule, plan, variant, index, cols, step->arity,
-                        sink, delta);
-        return st;
-    }
-    st = scan_step(eval, rule, plan, variant, index, step, cols, sink, delta);
+    st = m.st;
     return st;
 }
 
@@ -414,6 +549,16 @@ int datalog89_priv_join_variant(datalog89_eval *eval,
     int st;
 
     clear_bound(rule);
-    st = eval_step(eval, rule, plan, variant, 0, sink, delta);
+    if (variant->nsteps == 0)
+    {
+        st = emit_head(eval, rule, sink);
+        return st;
+    }
+    st = frame_start(eval, rule, plan, variant, 0, &rule->frames[0]);
+    if (st == DATALOG89_OK)
+    {
+        st = machine_run(eval, rule, plan, variant, sink, delta);
+    }
+    frames_close(eval, rule);
     return st;
 }

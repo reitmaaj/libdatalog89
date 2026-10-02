@@ -51,8 +51,9 @@ are valid.
   installation, plan-cache invalidation.
 - `src/datalog89_plan.c` — program plan compilation: per-rule variant
   expansion, static binding patterns, plan build/release (see 0002-plan-design).
-- `src/datalog89_join.c` — plan interpreter: pattern-driven scan filling,
-  tuple unification, head instantiation, insertion.
+- `src/datalog89_join.c` — plan interpreter: an explicit frame stack walks each
+  variant's steps, filling scans from static patterns, unifying tuples, and
+  emitting heads without C recursion.
 - `src/datalog89_fixpoint.c` — least-fixed-point scheduling over precompiled
   variants.
 - `src/datalog89_test.c` + `src/datalog89_test.h` — test-only plan
@@ -68,7 +69,8 @@ build counter, and a `running` flag.
 A compiled rule owns deep copies of all terms and atoms, a variable-id to
 slot map, an environment (`env` values + `bound` flags per slot), scan
 binding scratch (`values`, `bvalues`), a tuple scratch buffer sized to the
-largest atom arity, and a log of slots bound while unifying one tuple.
+largest atom arity, a log of slots bound while unifying one tuple, and a
+frame array (one frame per body step) for the explicit join stack.
 
 The plan owns contiguous arrays of variants, steps, and static binding
 patterns. Each pattern column is CONST (scan-bound constant), SLOT (bound by

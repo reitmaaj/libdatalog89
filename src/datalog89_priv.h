@@ -31,6 +31,18 @@ typedef struct
     datalog89_priv_cterm *terms;
 } datalog89_priv_catom;
 
+/* One level of the explicit join stack: an open store scan or a delta
+ * cursor. bound_count records the slots bound by this frame's current
+ * tuple so they can be undone before advancing. */
+struct datalog89_priv_frame
+{
+    datalog89_scan *scan;
+    size_t next_delta;
+    size_t bound_count;
+    unsigned char in_delta;
+    unsigned char has_tuple;
+};
+
 typedef struct
 {
     datalog89_priv_catom head;
@@ -44,6 +56,7 @@ typedef struct
     datalog89_const *tuple;
     size_t tuple_cap;
     size_t *bound_log;
+    struct datalog89_priv_frame *frames;
 } datalog89_priv_crule;
 
 typedef struct
